@@ -426,84 +426,93 @@ static double make_non_zero(double v)
 
 matd_t *matd_inverse(const matd_t *x)
 {
-    matd_t *m = NULL;
-
     assert(x != NULL);
     assert(x->nrows == x->ncols);
 
     if (matd_is_scalar(x))
         return matd_create_scalar(1.0 / x->data[0]);
 
+    if (x->nrows > 4) {
+        matd_lu_t *lu = matd_lu(x);
+        matd_t *eye = matd_identity(x->nrows);
+        matd_t *inv = matd_lu_solve(lu, eye);
+        matd_destroy(eye);
+        matd_lu_destroy(lu);
+        return inv;
+    }
+
     double invdet = 1.0 / make_non_zero(matd_det(x));
+    matd_t *m = NULL;
 
     switch(x->nrows) {
-    case 1:
-        // a 1x1 matrix
-        m = matd_create(x->nrows, x->nrows);
-        MATD_EL(m, 0, 0) = invdet;
-        return m;
+        case 1:
+            // a 1x1 matrix
+            m = matd_create(x->nrows, x->nrows);
+            MATD_EL(m, 0, 0) = invdet;
+            return m;
 
-    case 2:
-        m = matd_create(x->nrows, x->nrows);
-        MATD_EL(m, 0, 0) = MATD_EL(x, 1, 1) * invdet;
-        MATD_EL(m, 0, 1) = - MATD_EL(x, 0, 1) * invdet;
-        MATD_EL(m, 1, 0) = - MATD_EL(x, 1, 0) * invdet;
-        MATD_EL(m, 1, 1) = MATD_EL(x, 0, 0) * invdet;
-        return m;
+        case 2:
+            m = matd_create(x->nrows, x->nrows);
+            MATD_EL(m, 0, 0) = MATD_EL(x, 1, 1) * invdet;
+            MATD_EL(m, 0, 1) = - MATD_EL(x, 0, 1) * invdet;
+            MATD_EL(m, 1, 0) = - MATD_EL(x, 1, 0) * invdet;
+            MATD_EL(m, 1, 1) = MATD_EL(x, 0, 0) * invdet;
+            return m;
 
-    case 3:
-        m = matd_create(x->nrows, x->nrows);
+        case 3:
+            m = matd_create(x->nrows, x->nrows);
 
-        double a = MATD_EL(x, 0, 0), b = MATD_EL(x, 0, 1), c = MATD_EL(x, 0, 2);
-        double d = MATD_EL(x, 1, 0), e = MATD_EL(x, 1, 1), f = MATD_EL(x, 1, 2);
-        double g = MATD_EL(x, 2, 0), h = MATD_EL(x, 2, 1), i = MATD_EL(x, 2, 2);
+            double a = MATD_EL(x, 0, 0), b = MATD_EL(x, 0, 1), c = MATD_EL(x, 0, 2);
+            double d = MATD_EL(x, 1, 0), e = MATD_EL(x, 1, 1), f = MATD_EL(x, 1, 2);
+            double g = MATD_EL(x, 2, 0), h = MATD_EL(x, 2, 1), i = MATD_EL(x, 2, 2);
 
-        MATD_EL(m,0,0) = invdet*(e*i-f*h);
-        MATD_EL(m,0,1) = invdet*(-b*i+c*h);
-        MATD_EL(m,0,2) = invdet*(b*f-c*e);
-        MATD_EL(m,1,0) = invdet*(-d*i+f*g);
-        MATD_EL(m,1,1) = invdet*(a*i-c*g);
-        MATD_EL(m,1,2) = invdet*(-a*f+c*d);
-        MATD_EL(m,2,0) = invdet*(d*h-e*g);
-        MATD_EL(m,2,1) = invdet*(-a*h+b*g);
-        MATD_EL(m,2,2) = invdet*(a*e-b*d);
-        return m;
+            MATD_EL(m,0,0) = invdet*(e*i-f*h);
+            MATD_EL(m,0,1) = invdet*(-b*i+c*h);
+            MATD_EL(m,0,2) = invdet*(b*f-c*e);
+            MATD_EL(m,1,0) = invdet*(-d*i+f*g);
+            MATD_EL(m,1,1) = invdet*(a*i-c*g);
+            MATD_EL(m,1,2) = invdet*(-a*f+c*d);
+            MATD_EL(m,2,0) = invdet*(d*h-e*g);
+            MATD_EL(m,2,1) = invdet*(-a*h+b*g);
+            MATD_EL(m,2,2) = invdet*(a*e-b*d);
+            return m;
 
-    case 4: {
-        double m00 = MATD_EL(x,0,0), m01 = MATD_EL(x,0,1), m02 = MATD_EL(x,0,2), m03 = MATD_EL(x,0,3);
-        double m10 = MATD_EL(x,1,0), m11 = MATD_EL(x,1,1), m12 = MATD_EL(x,1,2), m13 = MATD_EL(x,1,3);
-        double m20 = MATD_EL(x,2,0), m21 = MATD_EL(x,2,1), m22 = MATD_EL(x,2,2), m23 = MATD_EL(x,2,3);
-        double m30 = MATD_EL(x,3,0), m31 = MATD_EL(x,3,1), m32 = MATD_EL(x,3,2), m33 = MATD_EL(x,3,3);
+        case 4: {
+            double m00 = MATD_EL(x,0,0), m01 = MATD_EL(x,0,1), m02 = MATD_EL(x,0,2), m03 = MATD_EL(x,0,3);
+            double m10 = MATD_EL(x,1,0), m11 = MATD_EL(x,1,1), m12 = MATD_EL(x,1,2), m13 = MATD_EL(x,1,3);
+            double m20 = MATD_EL(x,2,0), m21 = MATD_EL(x,2,1), m22 = MATD_EL(x,2,2), m23 = MATD_EL(x,2,3);
+            double m30 = MATD_EL(x,3,0), m31 = MATD_EL(x,3,1), m32 = MATD_EL(x,3,2), m33 = MATD_EL(x,3,3);
 
-        m = matd_create(x->nrows, x->nrows);
-        MATD_EL(m,0,0) =   m11 * m22 * m33 - m11 * m23 * m32 - m21 * m12 * m33 + m21 * m13 * m32 + m31 * m12 * m23 - m31 * m13 * m22;
-        MATD_EL(m,1,0) = - m10 * m22 * m33 + m10 * m23 * m32 + m20 * m12 * m33 - m20 * m13 * m32 - m30 * m12 * m23 + m30 * m13 * m22;
-        MATD_EL(m,2,0) =   m10 * m21 * m33 - m10 * m23 * m31 - m20 * m11 * m33 + m20 * m13 * m31 + m30 * m11 * m23 - m30 * m13 * m21;
-        MATD_EL(m,3,0) = - m10 * m21 * m32 + m10 * m22 * m31 + m20 * m11 * m32 - m20 * m12 * m31 - m30 * m11 * m22 + m30 * m12 * m21;
-        MATD_EL(m,0,1) = - m01 * m22 * m33 + m01 * m23 * m32 + m21 * m02 * m33 - m21 * m03 * m32 - m31 * m02 * m23 + m31 * m03 * m22;
-        MATD_EL(m,1,1) =   m00 * m22 * m33 - m00 * m23 * m32 - m20 * m02 * m33 + m20 * m03 * m32 + m30 * m02 * m23 - m30 * m03 * m22;
-        MATD_EL(m,2,1) = - m00 * m21 * m33 + m00 * m23 * m31 + m20 * m01 * m33 - m20 * m03 * m31 - m30 * m01 * m23 + m30 * m03 * m21;
-        MATD_EL(m,3,1) =   m00 * m21 * m32 - m00 * m22 * m31 - m20 * m01 * m32 + m20 * m02 * m31 + m30 * m01 * m22 - m30 * m02 * m21;
-        MATD_EL(m,0,2) =   m01 * m12 * m33 - m01 * m13 * m32 - m11 * m02 * m33 + m11 * m03 * m32 + m31 * m02 * m13 - m31 * m03 * m12;
-        MATD_EL(m,1,2) = - m00 * m12 * m33 + m00 * m13 * m32 + m10 * m02 * m33 - m10 * m03 * m32 - m30 * m02 * m13 + m30 * m03 * m12;
-        MATD_EL(m,2,2) =   m00 * m11 * m33 - m00 * m13 * m31 - m10 * m01 * m33 + m10 * m03 * m31 + m30 * m01 * m13 - m30 * m03 * m11;
-        MATD_EL(m,3,2) = - m00 * m11 * m32 + m00 * m12 * m31 + m10 * m01 * m32 - m10 * m02 * m31 - m30 * m01 * m12 + m30 * m02 * m11;
-        MATD_EL(m,0,3) = - m01 * m12 * m23 + m01 * m13 * m22 + m11 * m02 * m23 - m11 * m03 * m22 - m21 * m02 * m13 + m21 * m03 * m12;
-        MATD_EL(m,1,3) =   m00 * m12 * m23 - m00 * m13 * m22 - m10 * m02 * m23 + m10 * m03 * m22 + m20 * m02 * m13 - m20 * m03 * m12;
-        MATD_EL(m,2,3) = - m00 * m11 * m23 + m00 * m13 * m21 + m10 * m01 * m23 - m10 * m03 * m21 - m20 * m01 * m13 + m20 * m03 * m11;
-        MATD_EL(m,3,3) =   m00 * m11 * m22 - m00 * m12 * m21 - m10 * m01 * m22 + m10 * m02 * m21 + m20 * m01 * m12 - m20 * m02 * m11;
+            m = matd_create(x->nrows, x->nrows);
+            MATD_EL(m,0,0) =   m11 * m22 * m33 - m11 * m23 * m32 - m21 * m12 * m33 + m21 * m13 * m32 + m31 * m12 * m23 - m31 * m13 * m22;
+            MATD_EL(m,1,0) = - m10 * m22 * m33 + m10 * m23 * m32 + m20 * m12 * m33 - m20 * m13 * m32 - m30 * m12 * m23 + m30 * m13 * m22;
+            MATD_EL(m,2,0) =   m10 * m21 * m33 - m10 * m23 * m31 - m20 * m11 * m33 + m20 * m13 * m31 + m30 * m11 * m23 - m30 * m13 * m21;
+            MATD_EL(m,3,0) = - m10 * m21 * m32 + m10 * m22 * m31 + m20 * m11 * m32 - m20 * m12 * m31 - m30 * m11 * m22 + m30 * m12 * m21;
+            MATD_EL(m,0,1) = - m01 * m22 * m33 + m01 * m23 * m32 + m21 * m02 * m33 - m21 * m03 * m32 - m31 * m02 * m23 + m31 * m03 * m22;
+            MATD_EL(m,1,1) =   m00 * m22 * m33 - m00 * m23 * m32 - m20 * m02 * m33 + m20 * m03 * m32 + m30 * m02 * m23 - m30 * m03 * m22;
+            MATD_EL(m,2,1) = - m00 * m21 * m33 + m00 * m23 * m31 + m20 * m01 * m33 - m20 * m03 * m31 - m30 * m01 * m23 + m30 * m03 * m21;
+            MATD_EL(m,3,1) =   m00 * m21 * m32 - m00 * m22 * m31 - m20 * m01 * m32 + m20 * m02 * m31 + m30 * m01 * m22 - m30 * m02 * m21;
+            MATD_EL(m,0,2) =   m01 * m12 * m33 - m01 * m13 * m32 - m11 * m02 * m33 + m11 * m03 * m32 + m31 * m02 * m13 - m31 * m03 * m12;
+            MATD_EL(m,1,2) = - m00 * m12 * m33 + m00 * m13 * m32 + m10 * m02 * m33 - m10 * m03 * m32 - m30 * m02 * m13 + m30 * m03 * m12;
+            MATD_EL(m,2,2) =   m00 * m11 * m33 - m00 * m13 * m31 - m10 * m01 * m33 + m10 * m03 * m31 + m30 * m01 * m13 - m30 * m03 * m11;
+            MATD_EL(m,3,2) = - m00 * m11 * m32 + m00 * m12 * m31 + m10 * m01 * m32 - m10 * m02 * m31 - m30 * m01 * m12 + m30 * m02 * m11;
+            MATD_EL(m,0,3) = - m01 * m12 * m23 + m01 * m13 * m22 + m11 * m02 * m23 - m11 * m03 * m22 - m21 * m02 * m13 + m21 * m03 * m12;
+            MATD_EL(m,1,3) =   m00 * m12 * m23 - m00 * m13 * m22 - m10 * m02 * m23 + m10 * m03 * m22 + m20 * m02 * m13 - m20 * m03 * m12;
+            MATD_EL(m,2,3) = - m00 * m11 * m23 + m00 * m13 * m21 + m10 * m01 * m23 - m10 * m03 * m21 - m20 * m01 * m13 + m20 * m03 * m11;
+            MATD_EL(m,3,3) =   m00 * m11 * m22 - m00 * m12 * m21 - m10 * m01 * m22 + m10 * m02 * m21 + m20 * m01 * m12 - m20 * m02 * m11;
 
-        for (int i = 0; i < 4; i++)
-            for (int j = 0; j < 4; j++)
-                MATD_EL(m,i,j) *= invdet;
+            for (int i = 0; i < 4; i++)
+                for (int j = 0; j < 4; j++)
+                    MATD_EL(m,i,j) *= invdet;
 
-        return m;
+            return m;
         }
 
-    default:
-        printf("Unimplemented matrix inverse of size %d\n", x->nrows);
-        assert(0);
+        default:
+            assert(0);
     }
+
+    assert(0);
 
     return NULL; // unreachable
 }
@@ -1693,8 +1702,18 @@ static double randf()
 int main(int argc, char *argv[])
 {
     if (1) {
-        int maxdim = 16;
+        int maxdim = 5;
         matd_t *A = matd_create(maxdim, maxdim);
+
+        for (int row = 0; row < A->nrows; row++) {
+            for (int col = 0; col < A->ncols; col++) {
+
+                MATD_EL(A, row, col) = randi();
+            }
+        }
+
+        matd_t *Ainv = matd_inverse(A);
+        matd_print(matd_op("M*F", A, Ainv), "%15f");
 
         for (int iter = 0; 1; iter++) {
             srand(iter);
