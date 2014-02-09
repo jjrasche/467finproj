@@ -56,7 +56,7 @@ static dynamixel_msg_t* send_command_raw(dynamixel_bus_t *bus,
     int header_have = 0;
     while (header_have < 4) {
         res = read_fully_timeout(impl->fd,
-                                 header->buf,
+                                 (header->buf)+header_have,
                                  4 - header_have,
                                  TIMEOUT_MS);
 
