@@ -1,8 +1,8 @@
 
 #include <stdint.h>
 #include <lcm/lcm.h>
-#include "maebot_command_t.h"
-#include "maebot_state_t.h"
+#include "lcmtypes/maebot_command_t.h"
+#include "lcmtypes/maebot_state_t.h"
 
 #include <string.h>
 #include <unistd.h>
@@ -59,7 +59,7 @@ command_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 
 	buf[msg_sz - 1] = calc_checksum(buf + HEADER_BYTES, COMMAND_T_BUFFER_BYTES);
 
-	writen(port, buf, msg_sz);	
+	writen(port, buf, msg_sz);
 }
 
 
@@ -88,7 +88,7 @@ int configure_port(int fd)
 	    printf("error reading port config\r\n");
 	    return -1;
     }
-    
+
     cfmakeraw(&old_settings);
     cfsetspeed(&old_settings, B115200);
 
@@ -137,7 +137,7 @@ int writen(int fd, const void* buf, size_t count)
 state_t get_state(int port)
 {
 	state_t state;
-	int ret;	
+	int ret;
 
 	uint8_t magic_check;
 	uint8_t num_magic;
@@ -182,7 +182,7 @@ state_t get_state(int port)
                 	printf("Bad packet: checksum failed\r\n");
                 	continue;
             	}
-	
+
 	        deserialize_state(buf, &state);
 
 		done = 1;
@@ -206,7 +206,7 @@ void* encoder_thread(void* arg)
 	struct timezone tz;
 
 	printf("Encoder Thread\n");
-	while(1){	
+	while(1){
 		// Telemetry handling
 		state = get_state(port);
 		gettimeofday(&tv, &tz);
@@ -276,4 +276,3 @@ int main()
 		lcm_handle(lcm);
 	}
 }
-
