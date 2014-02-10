@@ -1,0 +1,11 @@
+package maebot;
+
+struct command_t
+{
+    int64_t timestamp;
+    int16_t motor_left_speed;
+    int16_t motor_right_speed;
+
+    int8_t laser_power;
+}
+
