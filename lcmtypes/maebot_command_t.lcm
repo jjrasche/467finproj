@@ -1,5 +1,3 @@
-package maebot;
-
 struct command_t
 {
     int64_t timestamp;

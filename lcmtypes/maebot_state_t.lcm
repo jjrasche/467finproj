@@ -1,5 +1,3 @@
-package maebot;
-
 struct state_t
 {
 	int64_t timestamp;
