@@ -50,6 +50,7 @@ struct vx_world
 
 
     pthread_t process_thread;
+    int process_running;
 };
 
 
@@ -89,14 +90,19 @@ static void * run_process(void * data)
     vx_world_t * world = data;
 
 
-    while(1) {
+    while (world->process_running) {
         vx_world_listener_t * listener = NULL;
         char * buffer_name = NULL;
 
         // 1) Wait until there's data
         pthread_mutex_lock(&world->queue_mutex);
-        while (zarray_size(world->buffer_queue) == 0 && zarray_size(world->listener_queue) == 0) {
+        while (zarray_size(world->buffer_queue) == 0 && zarray_size(world->listener_queue) == 0 && world->process_running) {
             pthread_cond_wait(&world->queue_cond, &world->queue_mutex);
+        }
+
+        if (!world->process_running) { // XXX cleaning out the queue?
+            pthread_mutex_unlock(&world->queue_mutex);
+            break;
         }
 
         // Processing new listeners takes priority
@@ -166,6 +172,7 @@ vx_world_t * vx_world_create()
     world->listener_queue = zarray_create(sizeof(vx_world_listener_t*));
     world->buffer_queue = zarray_create(sizeof(char*));
 
+    world->process_running = 1;
     pthread_create(&world->process_thread, NULL, run_process, world);
     return world;
 }
@@ -180,8 +187,17 @@ static void vx_world_buffer_destroy(vx_buffer_t * buffer)
     zarray_vmap(buffer->back_objs, vx_object_dec_destroy);
     zarray_destroy(buffer->back_objs);
 
+    zarray_vmap(buffer->pending_objs, vx_object_dec_destroy);
+    zarray_destroy(buffer->pending_objs);
+
+    zarray_vmap(buffer->front_objs, vx_object_dec_destroy);
+    zarray_destroy(buffer->front_objs);
+
     zhash_vmap_values(buffer->front_resc, vx_resc_dec_destroy);
     zhash_destroy(buffer->front_resc);
+
+    vx_code_output_stream_destroy(buffer->front_codes);
+
     pthread_mutex_destroy(&buffer->mutex);
     free(buffer);
 
@@ -198,8 +214,21 @@ void vx_world_destroy(vx_world_t * world)
     pthread_mutex_destroy(&world->buffer_mutex);
     pthread_mutex_destroy(&world->listener_mutex);
 
+    // Tell the processing thread to quit
+    world->process_running = 0;
+    pthread_mutex_lock(&world->queue_mutex);
+    pthread_cond_signal(&world->queue_cond);
+    pthread_mutex_unlock(&world->queue_mutex);
+
+    pthread_join(world->process_thread, NULL);
+
     pthread_mutex_destroy(&world->queue_mutex);
     pthread_cond_destroy(&world->queue_cond);
+
+    // These are pointers to data stored elsewhere, just delete the
+    // data structure
+    zarray_destroy(world->listener_queue);
+    zarray_destroy(world->buffer_queue);
 
     free(world);
 }

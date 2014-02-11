@@ -9,6 +9,9 @@
 // Can pass some flags to change the way the image is rendered
 #define VXO_IMAGE_NOFLAGS 0
 #define VXO_IMAGE_FLIPY   1
+#define VXO_IMAGE_FLIPX   2
+#define VXO_IMAGE_CCW90   4
+#define VXO_IMAGE_CW90    8
 
 #ifdef __cplusplus
 extern "C" {

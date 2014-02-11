@@ -157,7 +157,7 @@ static void print_bounds(zarray_t * vertices)
         }
     }
 
-    printf(" xyz [%.2f, %.2f][%.2f, %.2f][%.2f, %.2f]\n",
+    printf(" Object bounds: xyz [%.2f, %.2f][%.2f, %.2f][%.2f, %.2f]\n",
            minMax[0][0],minMax[0][1],
            minMax[1][0],minMax[1][1],
            minMax[2][0],minMax[2][1]);

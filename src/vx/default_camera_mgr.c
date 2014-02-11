@@ -196,7 +196,29 @@ vx_camera_pos_t * default_cam_mgr_get_cam_pos(default_cam_mgr_t * state, int * v
     // Need to do more fixup depending on interface mode!
     {
         if (state->interface_mode <= 2.0) {
-            assert(0);
+            p->eye[0] = p->lookat[0];
+            p->eye[1] = p->lookat[1];
+            p->eye[2] = fabs(p->eye[2]);
+
+            {
+                matd_t * up = matd_create_data(3,1, p->up);
+                if (matd_vec_mag(up) < 1E-10) {
+                    up->data[0] = 0;
+                    up->data[1] = 1.0;
+                    up->data[0] = 0;
+                } else {
+
+                    matd_t * up2 = matd_vec_normalize(up);
+                    matd_destroy(up);
+                    up = up2;
+                }
+
+                memcpy(p->up, up->data, sizeof(double)*3);
+                matd_destroy(up);
+            }
+
+            p->lookat[2] = 0;
+
         } else if (state->interface_mode == 2.5) {
             zarray_t * fp = zarray_create(sizeof(matd_t*));
 
