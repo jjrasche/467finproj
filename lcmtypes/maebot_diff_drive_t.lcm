@@ -1,0 +1,7 @@
+
+struct maebot_diff_drive_t
+{
+    // Each between -1.0 and 1.0
+    float motor_left_speed;
+    float motor_right_speed;
+}
