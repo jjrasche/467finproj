@@ -247,8 +247,6 @@ int main(int argc, char ** argv)
     state->layer_map = zhash_create(sizeof(vx_display_t*), sizeof(vx_layer_t*), zhash_ptr_hash, zhash_ptr_equals);
 
     signal(SIGINT, handler);
-    signal(SIGQUIT, handler);
-
 
     getopt_add_bool(state->gopt, 'h', "help", 0, "Show this help");
     getopt_add_bool(state->gopt, 'v', "verbose", 0, "Show extra debugging output");
@@ -277,7 +275,7 @@ int main(int argc, char ** argv)
     remote_attr.max_bandwidth_KBs = getopt_get_int(state->gopt, "limitKBs");
     remote_attr.advertise_name = "Maebot Teleop";
 
-    vx_remote_display_source_t * remote = vx_remote_display_source_create_attr(&state->app, NULL);
+    vx_remote_display_source_t * remote = vx_remote_display_source_create_attr(&state->app, &remote_attr);
 
 
     pthread_create(&state->cmd_thread,  NULL, send_cmds, state);
