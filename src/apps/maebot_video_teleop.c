@@ -260,7 +260,7 @@ int main(int argc, char ** argv)
         exit(-1);
     }
 
-    if (1) {
+    if (0) {
         vx_object_t *vt = vxo_text_create(VXO_TEXT_ANCHOR_TOP_RIGHT, "<<right,#0000ff>>Robot viewer!\n");
         vx_buffer_t *vb = vx_world_get_buffer(state->vw, "text");
         vx_buffer_add_back(vb, vxo_pix_coords(VX_ORIGIN_TOP_RIGHT,vt));
