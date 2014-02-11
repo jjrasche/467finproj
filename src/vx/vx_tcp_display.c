@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <unistd.h>
 #include <stdlib.h>
 
 #include "vx_tcp_display.h"
@@ -12,6 +13,7 @@
 #include "vx_event.h"
 #include "vx_camera_pos.h"
 #include "vx_tcp_util.h"
+#include "vx_util.h"
 
 #define IMPL_TYPE 0x9fabbe12
 
@@ -23,6 +25,14 @@ typedef struct
     vx_resc_manager_t * mgr;
 
     int cxn_stopped; // set to 1 on stop
+
+    int max_bandwidth_KBs; // < 0 unlimited, [0,...) limited
+
+    // Lock whenever processing codes or resources from display
+    // callbacks. Ensures the "mgr" state is consistent with what is
+    // actually transmitted on the wire. Could make the write mutex
+    // unnecessary
+    pthread_mutex_t state_mutex;
 
     ssocket_t * cxn;
     pthread_mutex_t write_mutex;
@@ -48,7 +58,24 @@ static void write_code_data(tcp_state_t * state, int op_type, const uint8_t * da
     combined->write_bytes(combined, data, datalen);
 
     pthread_mutex_lock(&state->write_mutex);
+    uint64_t before_mtime = vx_mtime();
+
     write_fully(fd, combined->data, combined->pos);
+    uint64_t after_mtime = vx_mtime();
+
+    if (state->max_bandwidth_KBs >= 0) {
+        // in seconds:
+        double dt = (after_mtime - before_mtime) / 1e3;
+        double desired_dt = (datalen/1e3) / state->max_bandwidth_KBs;
+
+        int64_t sleep_us = (int64_t)((desired_dt - dt) * 1e6);
+
+        if (verbose > 1) printf("datalen %d dt %f desired_dt %f usleep %ld\n",
+                            datalen, dt, desired_dt, sleep_us);
+
+        if (sleep_us > 0) // avoid zero, neg sleeps
+            usleep(sleep_us);
+    }
     pthread_mutex_unlock(&state->write_mutex);
 
     vx_code_output_stream_destroy(combined);
@@ -56,14 +83,13 @@ static void write_code_data(tcp_state_t * state, int op_type, const uint8_t * da
 
 static void send_codes(vx_display_t * disp, const uint8_t * data, int datalen)
 {
-    // XXX some codes need to be examined locally before they are shipped
-
     vx_code_input_stream_t * cins = vx_code_input_stream_create(data, datalen);
     // Peek at the code type. Only some codes are forwarded verbatim
     uint32_t code = cins->read_uint32(cins);
 
     tcp_state_t * state = disp->impl;
 
+    pthread_mutex_lock(&state->state_mutex);
     switch(code) {
         case OP_BUFFER_RESOURCES:
             vx_resc_manager_buffer_resources(state->mgr, data, datalen);
@@ -74,6 +100,7 @@ static void send_codes(vx_display_t * disp, const uint8_t * data, int datalen)
         default:
             write_code_data((tcp_state_t *)disp->impl, VX_TCP_CODES, data, datalen);
     }
+    pthread_mutex_unlock(&state->state_mutex);
 
     vx_code_input_stream_destroy(cins);
 }
@@ -82,10 +109,11 @@ static void send_resources(vx_display_t * disp, zhash_t * all_resources)
 {
     tcp_state_t * state = disp->impl;
 
+    pthread_mutex_lock(&state->state_mutex);
     // XXX mutex?
     zhash_t * transmit = vx_resc_manager_dedup_resources(state->mgr, all_resources);
 
-    if (0) {
+    if (verbose) {
         printf("DBG: Transmit resources: ");
         zhash_iterator_t itr;
         zhash_iterator_init(transmit, &itr);
@@ -102,6 +130,8 @@ static void send_resources(vx_display_t * disp, zhash_t * all_resources)
     vx_tcp_util_pack_resources(transmit, ocodes);
 
     write_code_data((tcp_state_t*) disp->impl, VX_TCP_ADD_RESOURCES, ocodes->data, ocodes->pos);
+
+    pthread_mutex_unlock(&state->state_mutex);
 
     vx_code_output_stream_destroy(ocodes);
     zhash_destroy(transmit);
@@ -283,6 +313,8 @@ static void state_destroy(tcp_state_t * state)
     pthread_mutex_destroy(&state->write_mutex);
     pthread_mutex_destroy(&state->read_mutex);
 
+    pthread_mutex_destroy(&state->state_mutex);
+
     pthread_mutex_destroy(&state->list_mutex);
 
     zarray_destroy(state->listeners);
@@ -348,17 +380,20 @@ static tcp_state_t * state_create(ssocket_t * cxn, void (*cxn_closed_callback)(v
     pthread_mutex_init(&state->write_mutex, NULL);
     pthread_mutex_init(&state->read_mutex, NULL);
 
+    pthread_mutex_init(&state->state_mutex, NULL);
+
     pthread_create(&state->read_thread,NULL, read_run, state);
 
     return state;
 }
 
-vx_display_t * vx_tcp_display_create(ssocket_t * cxn, void (*cxn_closed_callback)(vx_display_t * disp, void * cpriv), void * cpriv)
+vx_display_t * vx_tcp_display_create(ssocket_t * cxn, int limitKBs, void (*cxn_closed_callback)(vx_display_t * disp, void * cpriv), void * cpriv)
 {
     vx_display_t * disp = calloc(1, sizeof(vx_display_t));
     disp->impl_type = IMPL_TYPE;
     tcp_state_t * state = state_create(cxn, cxn_closed_callback, cpriv, disp);
     disp->impl = state;
+    state->max_bandwidth_KBs = limitKBs;
 
     disp->send_codes = send_codes;
     disp->send_resources = send_resources;

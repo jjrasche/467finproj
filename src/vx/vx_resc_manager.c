@@ -90,7 +90,7 @@ zhash_t * vx_resc_manager_dedup_resources(vx_resc_manager_t * mgr, zhash_t * res
 static void print_manager(vx_resc_manager_t * mgr)
 {
 
-    printf("#mgr has  %d worlds:\n", zhash_size(mgr->allLiveSets));
+    printf(" #mgr has  %d worlds:\n", zhash_size(mgr->allLiveSets));
 
     zhash_iterator_t world_itr;
     zhash_iterator_init(mgr->allLiveSets, &world_itr);
@@ -99,14 +99,14 @@ static void print_manager(vx_resc_manager_t * mgr)
     while (zhash_iterator_next(&world_itr, &worldId, &buffer_map)) {
         zhash_iterator_t buffer_itr;
         zhash_iterator_init(buffer_map, &buffer_itr);
-        printf(">world %d contains %d buffers:\n", worldId, zhash_size(buffer_map));
+        printf("  >world %d contains %d buffers:\n", worldId, zhash_size(buffer_map));
 
         char * buffer_name = NULL;
         zhash_t * res_map = NULL;
         while(zhash_iterator_next(&buffer_itr, &buffer_name, &res_map)) {
             zhash_iterator_t res_itr;
             zhash_iterator_init(res_map, &res_itr);
-            printf(">>buffer %s (%d): ", buffer_name, zhash_size(res_map));
+            printf("  >>buffer %s (%d): ", buffer_name, zhash_size(res_map));
 
             uint64_t vrid = 0;
             vx_resc_t * vr = NULL;
@@ -117,7 +117,7 @@ static void print_manager(vx_resc_manager_t * mgr)
         }
     }
 
-    printf("#aggregate (%d): ", zhash_size(mgr->remoteResc));
+    printf(" #aggregate (%d): ", zhash_size(mgr->remoteResc));
     zhash_iterator_t res_itr;
     zhash_iterator_init(mgr->remoteResc, &res_itr);
     uint64_t vrid = 0;

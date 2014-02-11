@@ -249,9 +249,11 @@ void vx_layer_camera_op(vx_layer_t *vl, int op_code)
     vx_code_output_stream_destroy(couts);
 }
 
-void vx_layer_camera_lookat(vx_layer_t * vl, const float * eye3, const float* lookat3, const float * up3,
-                            uint8_t set_default)
-{
+void vx_layer_camera_lookat_timed (vx_layer_t *vl,
+                                   const float *eye3, const float *lookat3, const float *up3,
+                                   uint8_t set_default, uint64_t animate_ms) {
+
+
     assert(vl->disp != NULL && "Must set a display before setting camera");
 
     vx_code_output_stream_t * couts = vx_code_output_stream_create(128);
@@ -271,12 +273,18 @@ void vx_layer_camera_lookat(vx_layer_t * vl, const float * eye3, const float* lo
     couts->write_float(couts, up3[1]);
     couts->write_float(couts, up3[2]);
 
-    couts->write_uint32(couts, UI_ANIMATE_MS);
+    couts->write_uint32(couts, animate_ms);
     couts->write_uint8(couts, set_default);
 
     vl->disp->send_codes(vl->disp, couts->data, couts->pos);
 
     vx_code_output_stream_destroy(couts);
+}
+
+void vx_layer_camera_lookat(vx_layer_t * vl, const float * eye3, const float* lookat3, const float * up3,
+                            uint8_t set_default)
+{
+    vx_layer_camera_lookat_timed (vl, eye3, lookat3, up3, set_default, UI_ANIMATE_MS);
 }
 
 void vx_layer_camera_fit2D(vx_layer_t * vl, const float * xy0,

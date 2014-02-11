@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-vx_display_t * vx_tcp_display_create(ssocket_t * cxn, void (*cxn_closed_callback)(vx_display_t * disp, void * cpriv), void * cpriv);
+vx_display_t * vx_tcp_display_create(ssocket_t * cxn, int limitKBs, void (*cxn_closed_callback)(vx_display_t * disp, void * cpriv), void * cpriv);
 void vx_tcp_display_destroy(vx_display_t * disp);
 
 // Call this function to initiate a graceful shutdown of this display.
