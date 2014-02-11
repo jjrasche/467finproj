@@ -134,8 +134,8 @@ static void window_space_pan_to(double * xyz, double winx, double winy, matd_t *
 
 static int default_mouse_event(vx_event_handler_t * vh, vx_layer_t * vl, vx_camera_pos_t * pos, vx_mouse_event_t * mouse)
 {
-//    printf("mouse_event deh (%f,%f) buttons = %x scroll = %d modifiers = %x\n",
-//            mouse->x, mouse->y, mouse->button_mask, mouse->scroll_amt, mouse->modifiers);
+    /* printf("mouse_event deh (%f,%f) buttons = %x scroll = %d modifiers = %x\n", */
+    /*        mouse->xy[0],mouse->xy[1], mouse->button_mask, mouse->scroll_amt, mouse->modifiers); */
 
     default_event_handler_t * deh = (default_event_handler_t*) vh->impl;
 
@@ -143,9 +143,8 @@ static int default_mouse_event(vx_event_handler_t * vh, vx_layer_t * vl, vx_came
     /* int ctrl = mouse->modifiers & VX_CTRL_MASK; */
 
     // no camera movement with the following modifiers
-    if (// mouse->modifiers & VX_SHIFT_MASK ||
+    if (//mouse->modifiers & VX_SHIFT_MASK ||
         mouse->modifiers & VX_CTRL_MASK ||
-        mouse->modifiers & VX_WIN_MASK ||
         mouse->modifiers & VX_ALT_MASK ) {
         deh->manip_in_progress = 0;
         return 0;
@@ -222,7 +221,7 @@ static int default_mouse_event(vx_event_handler_t * vh, vx_layer_t * vl, vx_came
         double dy = mouse->y - deh->last_rotate_y;
         double pixelsToRadians = M_PI /  (pos->viewport[2] >  pos->viewport[3] ? pos->viewport[2] : pos->viewport[3]);
 
-        if (mouse->modifiers & VX_SHIFT_MASK) { // rotate roll only
+        if (mouse->modifiers & VX_CAPS_MASK) { // rotate roll only
             double cx = pos->viewport[0] + pos->viewport[2]/2;
             double cy = pos->viewport[1] + pos->viewport[3]/2;
 
@@ -337,9 +336,12 @@ static int default_key_event(vx_event_handler_t * vh, vx_layer_t * vl, vx_key_ev
             uint64_t mtime = 0;
             vx_camera_pos_t * pos = default_cam_mgr_get_cam_target(deh->cam_mgr, &mtime);
 
-            //printf("Camera.eye : %.3lf %.3lf %.3lf\n", pos->eye[0], pos->eye[1], pos->eye[2]);
-            //printf("Camera.lookat : %.3lf %.3lf %.3lf\n", pos->lookat[0], pos->lookat[1], pos->lookat[2]);
-            //printf("Camera.up : %.3lf %.3lf %.3lf\n", pos->up[0], pos->up[1], pos->up[2]);
+            printf("eye =[%.3lf %.3lf %.3lf]\n",
+                   pos->eye[0], pos->eye[1], pos->eye[2]);
+            printf("lookat = [%.3lf %.3lf %.3lf]\n",
+                   pos->lookat[0], pos->lookat[1], pos->lookat[2]);
+            printf("up = [%.3lf %.3lf %.3lf]\n",
+                   pos->up[0], pos->up[1], pos->up[2]);
 
             zhash_put(deh->bookmarks, &event->key_code, &pos, NULL, &old_pos);
 
@@ -356,9 +358,9 @@ static int default_key_event(vx_event_handler_t * vh, vx_layer_t * vl, vx_key_ev
                        event->key_code - VX_KEY_F1 + 1,
                        event->key_code - VX_KEY_F1 + 1);
             } else {
-                // XXX need to specify animate time (should be much
-                // longer than UI)!
-                default_cam_mgr_lookat(deh->cam_mgr, pos->eye, pos->lookat, pos->up, 0, deh->ui_animate_ms*5);
+                // XXX need to specify animate time (should be much longer than UI)!
+                // set_cam_pos preserves ortho/perspective mode, lookat does not
+                default_cam_mgr_set_cam_pos(deh->cam_mgr, pos, 0, deh->ui_animate_ms*5);
             }
 
 

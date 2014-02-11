@@ -32,9 +32,16 @@ vx_style_t * vxo_mesh_style_solid_multi_colored(vx_resc_t * colors);
 // NOTE: these colors are dim=3, since the transparency is specified per
 // material (not per color). You can still pass dim=4, but the last
 // element will be ignored
-vx_style_t * vxo_mesh_style_fancy(const float * color_ambient3, const float * color_diffuse3, const float * color_specular3,
-                                  float transparency, float specularity, int type);
-
+// @opacity       -- 0.0 transparent, 1.0 opaque
+// @specularity   -- higher range means specularities are more localized
+// @type          -- 0 = solid,
+//                   1 = diffuse
+//                   2 = phong
+// Note: generally, it's more efficient to use the appropriate style
+// than to change type to 0 or 1
+vx_style_t * vxo_mesh_style_fancy(const float * color_ambient3, const float * color_diffuse3,
+                                  const float * color_specular3,
+                                  float opacity, float specularity, int type);
 
 
 // XXX Should add a mesh shader that uses lighting

@@ -11,12 +11,12 @@
 #include "vx/vx_remote_display_source.h"
 
 #include "common/getopt.h"
-#include "common/image_u8x3.h"
+#include "common/image_util.h"
 #include "common/timestamp.h"
 #include "imagesource/image_source.h"
 #include "imagesource/image_convert.h"
 
-#include "lcmtypes/maebot_command_t.h"
+#include "lcmtypes/maebot_diff_drive_t.h"
 
 // XXX these need to be fixed based on actual spec
 #define MAX_REVERSE_SPEED -32768
@@ -27,7 +27,7 @@ typedef struct
     vx_application_t app;
     vx_event_handler_t veh;
 
-    maebot_command_t cmd;
+    maebot_diff_drive_t cmd;
     pthread_mutex_t cmd_mutex;
     pthread_t cmd_thread;
 
@@ -46,6 +46,8 @@ typedef struct
     zhash_t *layer_map; // <display, layer>
 } state_t;
 
+
+static int verbose = 0;
 
 static void display_finished(vx_application_t * app, vx_display_t * disp)
 {
@@ -80,6 +82,8 @@ static void display_started(vx_application_t * app, vx_display_t * disp)
 void* run_camera(void * data)
 {
 
+    if (verbose) printf("Starting run_camera\n");
+
     state_t * state = data;
     image_source_t *isrc = state->isrc;
 
@@ -100,13 +104,24 @@ void* run_camera(void * data)
             isrc->release_frame(isrc, &isdata);
         }
 
+        if (verbose) printf("Got frame %p\n", im);
         if (im != NULL) {
 
+            double decimate = getopt_get_double(state->gopt, "decimate");
+            if (decimate != 1.0) {
+                image_u32_t * im2 = image_util_u32_decimate(im, decimate);
+                image_u32_destroy(im);
+                im = im2;
+            }
+
             vx_object_t * vo = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, VX_TEX_MIN_FILTER);
-            // XXX We may want to downsample the image eventually
+
+            // show downsampled image, but scale it so it appears the
+            // same size as the original
             vx_buffer_t *vb = vx_world_get_buffer(state->vw, "image");
             vx_buffer_add_back(vb, vxo_pix_coords(VX_ORIGIN_TOP_LEFT,
-                                                  vxo_chain (vxo_mat_translate3 (0, -im->height, 0),
+                                                  vxo_chain (vxo_mat_scale(decimate),
+                                                             vxo_mat_translate3 (0, -im->height, 0),
                                                              vo)));
             vx_buffer_swap(vb);
         }
@@ -193,9 +208,9 @@ static void * send_cmds(void * data)
 
         pthread_mutex_lock(&state->cmd_mutex);
         {
-            state->cmd.timestamp = utime_now();
+            //state->cmd.timestamp = utime_now();
 
-            maebot_command_t_publish(state->lcm,  "MAEBOT_COMMAND", &state->cmd);
+            maebot_diff_drive_t_publish(state->lcm,  "MAEBOT_DIFF_DRIVE", &state->cmd);
         }
         pthread_mutex_unlock(&state->cmd_mutex);
 
@@ -232,38 +247,20 @@ int main(int argc, char ** argv)
     state->layer_map = zhash_create(sizeof(vx_display_t*), sizeof(vx_layer_t*), zhash_ptr_hash, zhash_ptr_equals);
 
     signal(SIGINT, handler);
-    signal(SIGQUIT, handler);
 
+    getopt_add_bool(state->gopt, 'h', "help", 0, "Show this help");
+    getopt_add_bool(state->gopt, 'v', "verbose", 0, "Show extra debugging output");
+    getopt_add_bool(state->gopt, '\0', "no-video", 0, "Disable video");
+    getopt_add_int (state->gopt, 'l', "limitKBs", "-1", "Remote display bandwidth limit. < 0: unlimited.");
+    getopt_add_int (state->gopt, 'd', "decimate", "1", "Decimate image by this amount before showing in vx");
 
-    getopt_add_bool(state->gopt, 'h', "--help", 0, "Show this help");
-
-    if (!getopt_parse(state->gopt, argc, argv, 0)) {
+    if (!getopt_parse(state->gopt, argc, argv, 0) ||
+        getopt_get_bool(state->gopt,"help")) {
         getopt_do_usage(state->gopt);
         exit(-1);
     }
 
-    const zarray_t *args = getopt_get_extra_args(state->gopt);
-    if (zarray_size(args) > 0) {
-        zarray_get(args, 0, &state->url);
-    } else {
-        zarray_t *urls = image_source_enumerate();
-
-        printf("Cameras:\n");
-        for (int i = 0; i < zarray_size(urls); i++) {
-            char *url;
-            zarray_get(urls, i, &url);
-            printf("  %3d: %s\n", i, url);
-        }
-
-        if (zarray_size(urls) == 0) {
-            printf("No cameras found.\n");
-            exit(0);
-        }
-        zarray_get(urls, 0, &state->url);
-    }
-
-
-    if (1) {
+    if (0) {
         vx_object_t *vt = vxo_text_create(VXO_TEXT_ANCHOR_TOP_RIGHT, "<<right,#0000ff>>Robot viewer!\n");
         vx_buffer_t *vb = vx_world_get_buffer(state->vw, "text");
         vx_buffer_add_back(vb, vxo_pix_coords(VX_ORIGIN_TOP_RIGHT,vt));
@@ -271,23 +268,57 @@ int main(int argc, char ** argv)
     }
 
 
-    vx_remote_display_source_t * remote = vx_remote_display_source_create(&state->app);
+    verbose = getopt_get_bool(state->gopt, "verbose");
+
+    vx_remote_display_source_attr_t remote_attr;
+    vx_remote_display_source_attr_init(&remote_attr);
+    remote_attr.max_bandwidth_KBs = getopt_get_int(state->gopt, "limitKBs");
+    remote_attr.advertise_name = "Maebot Teleop";
+
+    vx_remote_display_source_t * remote = vx_remote_display_source_create_attr(&state->app, &remote_attr);
+
 
     pthread_create(&state->cmd_thread,  NULL, send_cmds, state);
 
-    state->isrc = image_source_open(state->url);
-    if (state->isrc == NULL) {
-        printf("Unable to open device %s\n", state->url);
-        exit(-1);
+    if (!getopt_get_bool(state->gopt, "no-video")) {
+        const zarray_t *args = getopt_get_extra_args(state->gopt);
+        if (zarray_size(args) > 0) {
+            zarray_get(args, 0, &state->url);
+        } else {
+            zarray_t *urls = image_source_enumerate();
+
+            printf("Cameras:\n");
+            for (int i = 0; i < zarray_size(urls); i++) {
+                char *url;
+                zarray_get(urls, i, &url);
+                printf("  %3d: %s\n", i, url);
+            }
+
+            if (zarray_size(urls) == 0) {
+                printf("No cameras found.\n");
+                exit(0);
+            }
+            zarray_get(urls, 0, &state->url);
+        }
+
+
+
+        state->isrc = image_source_open(state->url);
+        if (state->isrc == NULL) {
+            printf("Unable to open device %s\n", state->url);
+            exit(-1);
+        }
+
+        image_source_t *isrc = state->isrc;
+
+        if (isrc->start(isrc))
+            exit(-1);
+        run_camera(state);
+
+        isrc->close(isrc);
+    } else {
+        while (1) sleep(1);
     }
-
-    image_source_t *isrc = state->isrc;
-
-    if (isrc->start(isrc))
-        exit(-1);
-    run_camera(state);
-
-    isrc->close(isrc);
 
     vx_remote_display_source_destroy(remote);
 }
