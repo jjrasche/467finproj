@@ -16,7 +16,7 @@
 #include "imagesource/image_source.h"
 #include "imagesource/image_convert.h"
 
-#include "lcmtypes/maebot_command_t.h"
+#include "lcmtypes/maebot_diff_drive_t.h"
 
 // XXX these need to be fixed based on actual spec
 #define MAX_REVERSE_SPEED -32768
@@ -27,7 +27,7 @@ typedef struct
     vx_application_t app;
     vx_event_handler_t veh;
 
-    maebot_command_t cmd;
+    maebot_diff_drive_t cmd;
     pthread_mutex_t cmd_mutex;
     pthread_t cmd_thread;
 
@@ -208,9 +208,9 @@ static void * send_cmds(void * data)
 
         pthread_mutex_lock(&state->cmd_mutex);
         {
-            state->cmd.timestamp = utime_now();
+            //state->cmd.timestamp = utime_now();
 
-            maebot_command_t_publish(state->lcm,  "MAEBOT_COMMAND", &state->cmd);
+            maebot_diff_drive_t_publish(state->lcm,  "MAEBOT_DIFF_DRIVE", &state->cmd);
         }
         pthread_mutex_unlock(&state->cmd_mutex);
 
