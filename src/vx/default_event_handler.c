@@ -143,7 +143,7 @@ static int default_mouse_event(vx_event_handler_t * vh, vx_layer_t * vl, vx_came
     /* int ctrl = mouse->modifiers & VX_CTRL_MASK; */
 
     // no camera movement with the following modifiers
-    if (mouse->modifiers & VX_SHIFT_MASK ||
+    if (//mouse->modifiers & VX_SHIFT_MASK ||
         mouse->modifiers & VX_CTRL_MASK ||
         mouse->modifiers & VX_ALT_MASK ) {
         deh->manip_in_progress = 0;
