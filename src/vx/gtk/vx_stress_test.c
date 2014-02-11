@@ -146,7 +146,7 @@ static void draw(state_t * state, vx_world_t * world)
     }
 
     // Draw a rose
-    {
+    if (1) {
         int npoints = 100;
         float points[npoints*3];
         float colors[npoints*4];
@@ -182,7 +182,7 @@ static void draw(state_t * state, vx_world_t * world)
     }
 
 
-    { // draw a box with all the fixings
+    if (1) { // draw a box with all the fixings
         vx_buffer_t * vb = vx_world_get_buffer(world, "rect");
 
         // should draw purple square, with green lines, all occluded by red corners.
@@ -217,6 +217,11 @@ static void display_finished(vx_application_t * app, vx_display_t * disp)
     zhash_remove(state->layers, &disp, NULL, &layer);
 
     vx_layer_destroy(layer);
+
+    // Exit after the last remote connection is closed
+    if (zhash_size(state->layers) == 0) {
+        state->running = 0;
+    }
 
     pthread_mutex_unlock(&state->mutex);
 }
@@ -334,6 +339,8 @@ static void state_destroy(state_t * state)
         image_u8_destroy(state->img);
 
     vx_world_destroy(state->world);
+    vx_world_destroy(state->world2);
+    vx_world_destroy(state->world3);
     assert(zhash_size(state->layers) == 0);
 
     zhash_destroy(state->layers);
@@ -421,6 +428,7 @@ void * render_loop(void * data)
 
         usleep(500);
     }
+    printf("Exiting render thread %s\n", buffer_name);
     free(buffer_name);
 
     return NULL;
@@ -507,6 +515,7 @@ int main(int argc, char ** argv)
     getopt_t *gopt = getopt_create();
     getopt_add_bool   (gopt, 'h', "help", 0, "Show help");
     getopt_add_bool (gopt, '\0', "no-gtk", 0, "Don't show gtk window, only advertise remote connection");
+    getopt_add_int (gopt, 'l', "limitKBs", "-1", "Remote display bandwidth limit. < 0: unlimited.");
     getopt_add_string (gopt, '\0', "pnm", "", "Path for pnm file to render as texture (.e.g BlockM.pnm)");
     getopt_add_bool (gopt, '\0', "stay-open", 0, "Stay open after gtk exits to continue handling remote connections");
 
@@ -516,6 +525,9 @@ int main(int argc, char ** argv)
         getopt_do_usage (gopt);
         exit (1);
     }
+
+    signal(SIGPIPE, SIG_IGN); // potential fix for Valgrind "Killed" on
+                              // remote viewer exit
 
     state_t * state = state_create();
 
@@ -530,7 +542,12 @@ int main(int argc, char ** argv)
 
     vx_application_t app = {.impl=state, .display_started=display_started, .display_finished=display_finished};
 
-    vx_remote_display_source_t * cxn = vx_remote_display_source_create(&app);
+    vx_remote_display_source_attr_t remote_attr;
+    vx_remote_display_source_attr_init(&remote_attr);
+    remote_attr.max_bandwidth_KBs = getopt_get_int(gopt, "limitKBs");
+    remote_attr.advertise_name = "Vx Stress Test";
+
+    vx_remote_display_source_t * cxn = vx_remote_display_source_create_attr(&app, &remote_attr);
     for (int i = 0; i < NRENDER; i++) {
         tinfo_t * tinfo = calloc(1,sizeof(tinfo_t));
         tinfo->state = state;
@@ -566,7 +583,7 @@ int main(int argc, char ** argv)
             state->running = 0;
     }
 
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < NRENDER; i++)
         pthread_join(state->render_threads[i], NULL);
     vx_remote_display_source_destroy(cxn);
 

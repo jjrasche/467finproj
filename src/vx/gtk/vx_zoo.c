@@ -49,13 +49,15 @@ int main(int argc, char ** argv)
                           vxo_points_style(vx_orange, 10.0f)));
 
     ADD_OBJECT(vxo_box, (vxo_mesh_style(vx_blue)));
+    ADD_OBJECT(vxo_circle, (vxo_mesh_style(vx_orange)));
     ADD_OBJECT(vxo_robot, (vxo_mesh_style(vx_green),
                            vxo_lines_style(vx_white, 2.0f)));
     ADD_OBJECT(vxo_tetrahedron, (vxo_lines_style(vx_green, 2.0f)));
     ADD_OBJECT(vxo_square_pyramid, (vxo_lines_style(vx_red, 2.0f)));
     ADD_OBJECT(vxo_cylinder, (vxo_mesh_style(vx_red)));
-    ADD_OBJECT(vxo_sphere, (vxo_mesh_style(vx_green)));
     ADD_OBJECT(vxo_axes, ());
+    ADD_OBJECT(vxo_sphere, (vxo_mesh_style_fancy(vx_red, vx_orange, vx_white,
+                                                 1.0, 30, 2)));
 
     vx_application_t app = {.impl=&state, .display_started=display_started, .display_finished=display_finished};
 

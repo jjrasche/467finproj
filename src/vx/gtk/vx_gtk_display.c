@@ -957,6 +957,16 @@ static void remove_listener(vx_display_t * disp, vx_display_listener_t * listene
 }
 
 // must be run on gl thread
+static void gl_cleanup_task(void * data)
+{
+    state_t * state = data;
+
+    gl_fbo_destroy(state->fbo);
+    vx_gl_renderer_destroy(state->glrend); // XXX This actually needs to run on the GL thread
+
+}
+
+// must be run on gl thread
 static void render_task(void * data)
 {
     render_buffer_t * buffer = data;
@@ -1451,9 +1461,8 @@ static void state_destroy(state_t * state)
     }
 
 
-    gl_fbo_destroy(state->fbo);
+    task_thread_schedule_blocking(gl_thread, gl_cleanup_task, state);
 
-    vx_gl_renderer_destroy(state->glrend); // XXX This actually needs to run on the GL thread
     pthread_mutex_destroy(&state->mutex);
     pthread_mutex_destroy(&state->movie_mutex);
     pthread_cond_destroy(&state->movie_cond);

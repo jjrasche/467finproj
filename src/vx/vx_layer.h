@@ -41,7 +41,14 @@ void vx_layer_add_event_handler(vx_layer_t * vl, vx_event_handler_t * eh);
 // OP_PROJ_PERSPECTIVE/ORTHO.
 void vx_layer_camera_op(vx_layer_t *vl, int op_code);
 
+
+
 // Fully specify the camera position:
+
+void vx_layer_camera_lookat_timed(vx_layer_t * vl, const float * eye3, const float* lookat3,
+                                  const float * up3, uint8_t set_default, uint64_t animate_ms);
+
+
 void vx_layer_camera_lookat(vx_layer_t * vl, const float * eye3, const float* lookat3,
                             const float * up3, uint8_t set_default);
 
