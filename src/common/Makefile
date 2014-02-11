@@ -8,6 +8,7 @@ COMMON_OBJS = getopt.o gps_linearize.o ioutils.o math_util.o \
               ssocket.o string_util.o timesync.o \
               c5.o matd.o zarray.o zhash.o task_thread.o \
 	      image_u8.o image_u8x3.o image_u32.o pnm.o \
+	      image_util.o\
 	      pg.o param_widget.o	\
 	      dynamixel_bus.o dynamixel_serial_bus.o dynamixel_device.o dynamixel_axseries.o dynamixel_mxseries.o
 

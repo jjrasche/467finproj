@@ -35,3 +35,23 @@
 //
 //}
 
+image_u32_t * image_util_u32_decimate(image_u32_t * orig, double decimate_factor)
+{
+    int new_width = (int)(orig->width / decimate_factor);
+    int new_height = (int)(orig->height / decimate_factor);
+    image_u32_t * output = image_u32_create(new_width, new_height);
+
+    for (int y = 0; y < output->height; y++)
+        for (int x = 0; x < output->width; x++) {
+            int new_idx = y*output->stride + x;
+
+            int old_y = (int)(y*decimate_factor);
+            int old_x = (int)(x*decimate_factor);
+
+            int old_idx = old_y * orig->stride + old_x;
+
+            output->buf[new_idx] = orig->buf[old_idx];
+        }
+
+    return output;
+}

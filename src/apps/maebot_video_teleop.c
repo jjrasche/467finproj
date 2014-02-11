@@ -11,7 +11,7 @@
 #include "vx/vx_remote_display_source.h"
 
 #include "common/getopt.h"
-#include "common/image_u8x3.h"
+#include "common/image_util.h"
 #include "common/timestamp.h"
 #include "imagesource/image_source.h"
 #include "imagesource/image_convert.h"
@@ -101,12 +101,21 @@ void* run_camera(void * data)
         }
 
         if (im != NULL) {
+            double decimate = getopt_get_double(state->gopt, "decimate");
+            if (decimate != 1.0) {
+                image_u32_t * im2 = image_util_u32_decimate(im, decimate);
+                image_u32_destroy(im);
+                im = im2;
+            }
 
             vx_object_t * vo = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, VX_TEX_MIN_FILTER);
-            // XXX We may want to downsample the image eventually
+
+            // show downsampled image, but scale it so it appears the
+            // same size as the original
             vx_buffer_t *vb = vx_world_get_buffer(state->vw, "image");
             vx_buffer_add_back(vb, vxo_pix_coords(VX_ORIGIN_TOP_LEFT,
-                                                  vxo_chain (vxo_mat_translate3 (0, -im->height, 0),
+                                                  vxo_chain (vxo_mat_scale(decimate),
+                                                             vxo_mat_translate3 (0, -im->height, 0),
                                                              vo)));
             vx_buffer_swap(vb);
         }
@@ -235,33 +244,16 @@ int main(int argc, char ** argv)
     signal(SIGQUIT, handler);
 
 
-    getopt_add_bool(state->gopt, 'h', "--help", 0, "Show this help");
+    getopt_add_bool(state->gopt, 'h', "help", 0, "Show this help");
+    getopt_add_bool(state->gopt, '\0', "no-video", 0, "Disable video");
+    //getopt_add_int (gopt, 'l', "limitKBs", "-1", "Remote display bandwidth limit. < 0: unlimited.");
+    getopt_add_int (state->gopt, 'd', "decimate", "1", "Decimate image by this amount before showing in vx");
 
-    if (!getopt_parse(state->gopt, argc, argv, 0)) {
+    if (!getopt_parse(state->gopt, argc, argv, 0) ||
+        getopt_get_bool(state->gopt,"help")) {
         getopt_do_usage(state->gopt);
         exit(-1);
     }
-
-    const zarray_t *args = getopt_get_extra_args(state->gopt);
-    if (zarray_size(args) > 0) {
-        zarray_get(args, 0, &state->url);
-    } else {
-        zarray_t *urls = image_source_enumerate();
-
-        printf("Cameras:\n");
-        for (int i = 0; i < zarray_size(urls); i++) {
-            char *url;
-            zarray_get(urls, i, &url);
-            printf("  %3d: %s\n", i, url);
-        }
-
-        if (zarray_size(urls) == 0) {
-            printf("No cameras found.\n");
-            exit(0);
-        }
-        zarray_get(urls, 0, &state->url);
-    }
-
 
     if (1) {
         vx_object_t *vt = vxo_text_create(VXO_TEXT_ANCHOR_TOP_RIGHT, "<<right,#0000ff>>Robot viewer!\n");
@@ -273,21 +265,48 @@ int main(int argc, char ** argv)
 
     vx_remote_display_source_t * remote = vx_remote_display_source_create(&state->app);
 
+
     pthread_create(&state->cmd_thread,  NULL, send_cmds, state);
 
-    state->isrc = image_source_open(state->url);
-    if (state->isrc == NULL) {
-        printf("Unable to open device %s\n", state->url);
-        exit(-1);
+    if (!getopt_get_bool(state->gopt, "no-video")) {
+        const zarray_t *args = getopt_get_extra_args(state->gopt);
+        if (zarray_size(args) > 0) {
+            zarray_get(args, 0, &state->url);
+        } else {
+            zarray_t *urls = image_source_enumerate();
+
+            printf("Cameras:\n");
+            for (int i = 0; i < zarray_size(urls); i++) {
+                char *url;
+                zarray_get(urls, i, &url);
+                printf("  %3d: %s\n", i, url);
+            }
+
+            if (zarray_size(urls) == 0) {
+                printf("No cameras found.\n");
+                exit(0);
+            }
+            zarray_get(urls, 0, &state->url);
+        }
+
+
+
+        state->isrc = image_source_open(state->url);
+        if (state->isrc == NULL) {
+            printf("Unable to open device %s\n", state->url);
+            exit(-1);
+        }
+
+        image_source_t *isrc = state->isrc;
+
+        if (isrc->start(isrc))
+            exit(-1);
+        run_camera(state);
+
+        isrc->close(isrc);
+    } else {
+        while (1) sleep(1);
     }
-
-    image_source_t *isrc = state->isrc;
-
-    if (isrc->start(isrc))
-        exit(-1);
-    run_camera(state);
-
-    isrc->close(isrc);
 
     vx_remote_display_source_destroy(remote);
 }
