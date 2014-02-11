@@ -246,7 +246,7 @@ int main(int argc, char ** argv)
 
     getopt_add_bool(state->gopt, 'h', "help", 0, "Show this help");
     getopt_add_bool(state->gopt, '\0', "no-video", 0, "Disable video");
-    //getopt_add_int (gopt, 'l', "limitKBs", "-1", "Remote display bandwidth limit. < 0: unlimited.");
+    getopt_add_int (state->gopt, 'l', "limitKBs", "-1", "Remote display bandwidth limit. < 0: unlimited.");
     getopt_add_int (state->gopt, 'd', "decimate", "1", "Decimate image by this amount before showing in vx");
 
     if (!getopt_parse(state->gopt, argc, argv, 0) ||
@@ -263,7 +263,12 @@ int main(int argc, char ** argv)
     }
 
 
-    vx_remote_display_source_t * remote = vx_remote_display_source_create(&state->app);
+    vx_remote_display_source_attr_t remote_attr;
+    vx_remote_display_source_attr_init(&remote_attr);
+    remote_attr.max_bandwidth_KBs = getopt_get_int(state->gopt, "limitKBs");
+    remote_attr.advertise_name = "Maebot Teleop";
+
+    vx_remote_display_source_t * remote = vx_remote_display_source_create_attr(&state->app, &remote_attr);
 
 
     pthread_create(&state->cmd_thread,  NULL, send_cmds, state);
