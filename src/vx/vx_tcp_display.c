@@ -380,7 +380,11 @@ static tcp_state_t * state_create(ssocket_t * cxn, void (*cxn_closed_callback)(v
     pthread_mutex_init(&state->write_mutex, NULL);
     pthread_mutex_init(&state->read_mutex, NULL);
 
-    pthread_mutex_init(&state->state_mutex, NULL);
+    pthread_mutexattr_t mutexAttr;
+    pthread_mutexattr_init(&mutexAttr);
+    pthread_mutexattr_settype(&mutexAttr, PTHREAD_MUTEX_RECURSIVE);
+
+    pthread_mutex_init(&state->state_mutex, &mutexAttr);
 
     pthread_create(&state->read_thread,NULL, read_run, state);
 
