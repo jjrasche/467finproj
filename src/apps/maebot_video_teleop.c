@@ -47,6 +47,8 @@ typedef struct
 } state_t;
 
 
+static int verbose = 0;
+
 static void display_finished(vx_application_t * app, vx_display_t * disp)
 {
     state_t * state = app->impl;
@@ -80,6 +82,8 @@ static void display_started(vx_application_t * app, vx_display_t * disp)
 void* run_camera(void * data)
 {
 
+    if (verbose) printf("Starting run_camera\n");
+
     state_t * state = data;
     image_source_t *isrc = state->isrc;
 
@@ -100,7 +104,9 @@ void* run_camera(void * data)
             isrc->release_frame(isrc, &isdata);
         }
 
+        if (verbose) printf("Got frame %p\n", im);
         if (im != NULL) {
+
             double decimate = getopt_get_double(state->gopt, "decimate");
             if (decimate != 1.0) {
                 image_u32_t * im2 = image_util_u32_decimate(im, decimate);
@@ -245,6 +251,7 @@ int main(int argc, char ** argv)
 
 
     getopt_add_bool(state->gopt, 'h', "help", 0, "Show this help");
+    getopt_add_bool(state->gopt, 'v', "verbose", 0, "Show extra debugging output");
     getopt_add_bool(state->gopt, '\0', "no-video", 0, "Disable video");
     getopt_add_int (state->gopt, 'l', "limitKBs", "-1", "Remote display bandwidth limit. < 0: unlimited.");
     getopt_add_int (state->gopt, 'd', "decimate", "1", "Decimate image by this amount before showing in vx");
@@ -263,12 +270,14 @@ int main(int argc, char ** argv)
     }
 
 
+    verbose = getopt_get_bool(state->gopt, "verbose");
+
     vx_remote_display_source_attr_t remote_attr;
     vx_remote_display_source_attr_init(&remote_attr);
     remote_attr.max_bandwidth_KBs = getopt_get_int(state->gopt, "limitKBs");
     remote_attr.advertise_name = "Maebot Teleop";
 
-    vx_remote_display_source_t * remote = vx_remote_display_source_create_attr(&state->app, &remote_attr);
+    vx_remote_display_source_t * remote = vx_remote_display_source_create_attr(&state->app, NULL);
 
 
     pthread_create(&state->cmd_thread,  NULL, send_cmds, state);
