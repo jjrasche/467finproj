@@ -27,6 +27,10 @@ typedef struct
     vx_application_t app;
     vx_event_handler_t veh;
 
+    maebot_command_t cmd;
+    pthread_mutex_t cmd_mutex;
+    pthread_t cmd_thread;
+
     int running;
 
     getopt_t * gopt;
@@ -36,7 +40,7 @@ typedef struct
 
     lcm_t * lcm;
 
-    pthread_mutex_t mutex;
+    pthread_mutex_t layer_mutex;
 
     vx_world_t * vw;
     zhash_t *layer_map; // <display, layer>
@@ -46,7 +50,7 @@ typedef struct
 static void display_finished(vx_application_t * app, vx_display_t * disp)
 {
     state_t * state = app->impl;
-    pthread_mutex_lock(&state->mutex);
+    pthread_mutex_lock(&state->layer_mutex);
 
     vx_layer_t * layer = NULL;
 
@@ -55,7 +59,7 @@ static void display_finished(vx_application_t * app, vx_display_t * disp)
 
     vx_layer_destroy(layer);
 
-    pthread_mutex_unlock(&state->mutex);
+    pthread_mutex_unlock(&state->layer_mutex);
 }
 
 static void display_started(vx_application_t * app, vx_display_t * disp)
@@ -66,10 +70,10 @@ static void display_started(vx_application_t * app, vx_display_t * disp)
     vx_layer_set_display(layer, disp);
     vx_layer_add_event_handler(layer, &state->veh);
 
-    pthread_mutex_lock(&state->mutex);
+    pthread_mutex_lock(&state->layer_mutex);
     // store a reference to the world and layer that we associate with each vx_display_t
     zhash_put(state->layer_map, &disp, &layer, NULL, NULL);
-    pthread_mutex_unlock(&state->mutex);
+    pthread_mutex_unlock(&state->layer_mutex);
 }
 
 
@@ -131,38 +135,34 @@ static int key_event (vx_event_handler_t * vh, vx_layer_t * vl, vx_key_event_t *
 {
     state_t *state = vh->impl;
 
-    maebot_command_t cmd;
-    memset(&cmd, 0, sizeof(maebot_command_t));
 
-    cmd.timestamp = utime_now();
-
-
+    pthread_mutex_lock(&state->cmd_mutex);
     if (!key->released) {
         if (key->key_code == 'w' || key->key_code == 'W') {
             // forward
-            cmd.motor_left_speed = MAX_FORWARD_SPEED;
-            cmd.motor_right_speed = MAX_FORWARD_SPEED;
+            state->cmd.motor_left_speed = MAX_FORWARD_SPEED;
+            state->cmd.motor_right_speed = MAX_FORWARD_SPEED;
         } else if (key->key_code == 'a' || key->key_code == 'A' ) {
             // turn left
-            cmd.motor_left_speed = MAX_REVERSE_SPEED;
-            cmd.motor_right_speed = MAX_FORWARD_SPEED;
+            state->cmd.motor_left_speed = MAX_REVERSE_SPEED;
+            state->cmd.motor_right_speed = MAX_FORWARD_SPEED;
 
         } else if (key->key_code == 's' || key->key_code == 'S') {
             // reverse
-            cmd.motor_left_speed = MAX_REVERSE_SPEED;
-            cmd.motor_right_speed = MAX_REVERSE_SPEED;
+            state->cmd.motor_left_speed = MAX_REVERSE_SPEED;
+            state->cmd.motor_right_speed = MAX_REVERSE_SPEED;
         } else if (key->key_code == 'd' || key->key_code == 'D') {
             // turn right
-            cmd.motor_left_speed = MAX_REVERSE_SPEED;
-            cmd.motor_right_speed = MAX_FORWARD_SPEED;
+            state->cmd.motor_left_speed = MAX_REVERSE_SPEED;
+            state->cmd.motor_right_speed = MAX_FORWARD_SPEED;
         }
     } else {
         // when key released, speeds default to 0
-        cmd.motor_left_speed = MAX_REVERSE_SPEED;
-        cmd.motor_right_speed = MAX_FORWARD_SPEED;
+        state->cmd.motor_left_speed = 0;
+        state->cmd.motor_right_speed = 0;
     }
+    pthread_mutex_unlock(&state->cmd_mutex);
 
-    maebot_command_t_publish(state->lcm,  "MAEBOT_COMMAND", &cmd);
     return 0;
 }
 
@@ -183,6 +183,25 @@ static void handler(int signum)
         default:
             break;
     }
+}
+
+static void * send_cmds(void * data)
+{
+    state_t * state = data;
+
+    while (state->running) {
+
+        pthread_mutex_lock(&state->cmd_mutex);
+        {
+            state->cmd.timestamp = utime_now();
+
+            maebot_command_t_publish(state->lcm,  "MAEBOT_COMMAND", &state->cmd);
+        }
+        pthread_mutex_unlock(&state->cmd_mutex);
+
+        usleep(50000); // send at 20 hz
+    }
+    return NULL;
 }
 
 int main(int argc, char ** argv)
@@ -207,7 +226,9 @@ int main(int argc, char ** argv)
     state->running = 1;
     state->lcm = lcm_create(NULL);
     state->vw = vx_world_create();
-    pthread_mutex_init(&state->mutex, NULL);
+    pthread_mutex_init(&state->layer_mutex, NULL);
+    pthread_mutex_init(&state->cmd_mutex, NULL);
+
     state->layer_map = zhash_create(sizeof(vx_display_t*), sizeof(vx_layer_t*), zhash_ptr_hash, zhash_ptr_equals);
 
     signal(SIGINT, handler);
@@ -252,7 +273,7 @@ int main(int argc, char ** argv)
 
     vx_remote_display_source_t * remote = vx_remote_display_source_create(&state->app);
 
-
+    pthread_create(&state->cmd_thread,  NULL, send_cmds, state);
 
     state->isrc = image_source_open(state->url);
     if (state->isrc == NULL) {
