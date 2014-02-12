@@ -24,7 +24,7 @@
 #include "types.h"
 
 #include <sys/time.h>
-
+#include <math.h>
 
 #ifndef max
 	#define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
@@ -34,6 +34,7 @@
 	#define min( a, b ) ( ((a) < (b)) ? (a) : (b) )
 #endif
 
+int writen(int fd, const void* buf, size_t count);
 
 void clamp(float* val, float min, float max)
 {
@@ -63,14 +64,15 @@ int port;
 
 int send_command(command_t command, int port);
 
+/*
 static void
 command_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 	const maebot_command_t* msg, void* user)
 {
-	printf("Received message on channel \"%s\":\r\n", channel);
+  //printf("Received message on channel \"%s\":\r\n", channel);
 	//printf("  timestamp   = %"PRId64"\n", msg->timestamp);
-	printf("  left_speed  = %d \r\n", msg->motor_left_speed);
-        printf("  right_speed = %d \r\n", msg->motor_right_speed);
+	//printf("  left_speed  = %d \r\n", msg->motor_left_speed);
+        //printf("  right_speed = %d \r\n", msg->motor_right_speed);
 
 	// Pass through to sama5
 	//command_t command;
@@ -88,19 +90,21 @@ command_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 
 }
 
-
+*/
 int send_command(command_t command, int port)
 {
     const uint32_t msg_sz = HEADER_BYTES + COMMAND_T_BUFFER_BYTES + 1;
 	uint8_t buf[msg_sz];
 
-    ((uint32_t*)buf)[0] = UART_MAGIC_NUMBER;
-	((uint32_t*)buf)[1] = COMMAND_T_BUFFER_BYTES;//msg_sz;
-	((uint32_t*)buf)[2] = COMMAND_TYPE;
+	uint32_t* buf32 = (uint32_t*)buf;
+
+	buf32[0] = UART_MAGIC_NUMBER;
+	buf32[1] = COMMAND_T_BUFFER_BYTES;//msg_sz;
+	buf32[2] = COMMAND_TYPE;
 
 	serialize_command(&command, (void*)(buf + HEADER_BYTES));
 
-	int i;
+	//int i;
     //printf("buf: ");
     //for(i = 0; i < COMMAND_T_BUFFER_BYTES; i++)
     //{
@@ -110,6 +114,8 @@ int send_command(command_t command, int port)
     buf[msg_sz - 1] = calc_checksum(buf + HEADER_BYTES, COMMAND_T_BUFFER_BYTES);
 
     writen(port, buf, msg_sz);
+
+    return 0;
 }
 
 
@@ -132,7 +138,7 @@ int open_port()
 
 int configure_port(int fd)
 {
-    struct termios old_settings, new_settings;
+  struct termios old_settings;
     if(tcgetattr(fd, &old_settings) != 0)
     {
 	    printf("error reading port config\r\n");
@@ -187,7 +193,6 @@ int writen(int fd, const void* buf, size_t count)
 state_t get_state(int port)
 {
 	state_t state;
-	int ret;
 
 	uint8_t magic_check;
 	uint8_t num_magic;
@@ -206,12 +211,12 @@ state_t get_state(int port)
 	}
 
 	uint32_t size = 0;
-        ret = readn(port, (void*)&size, 4);
+	readn(port, (void*)&size, 4);
 
         //printf("Message size: %d\n", size);
 
         uint32_t type = 0;
-        ret = readn(port, (void*)&type, 4);
+        readn(port, (void*)&type, 4);
 
 	if(type == STATE_TYPE)
 	{
@@ -222,10 +227,10 @@ state_t get_state(int port)
 			continue;
 		}
 	        uint8_t buf[STATE_T_BUFFER_BYTES];
-	        ret = readn(port, buf, STATE_T_BUFFER_BYTES);
+	        readn(port, buf, STATE_T_BUFFER_BYTES);
 
 		uint8_t checksum;
-		ret = readn(port, (void*)&checksum, 1);
+		readn(port, (void*)&checksum, 1);
 
 		if(checksum != calc_checksum(buf, STATE_T_BUFFER_BYTES))
            	{
@@ -331,11 +336,12 @@ void* sama5_command_thread(void* arg)
     {
         pthread_mutex_lock(&statelock);
 
-        command.motor_left_speed = abs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
-        command.motor_right_speed = abs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
+        command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
+        command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
 
-        printf("shared diff_drive left: %f", shared_state.diff_drive.motor_left_speed);
-        printf("command left:           %d", command.motor_left_speed);
+        //printf("shared diff_drive left: %f\n", shared_state.diff_drive.motor_left_speed);
+	//printf("abs:                    %f\n", fabs(shared_state.diff_drive.motor_right_speed));
+        //printf("command left:           %d\n", command.motor_left_speed);
 
 
         command.pwm_prea = pwm_prea;
@@ -469,9 +475,7 @@ int main()
         return 1;
     }
 
-
-	int ret;
-	printf("Opening port...");
+	//printf("Opening port...");
 
 	port = open_port();
 	if(port == -1)
@@ -479,39 +483,40 @@ int main()
 		printf("error opening port\n");
 		return 1;
 	}
-	printf("done.\n");
-	printf("Configuring port...");
+	//printf("done.\n");
+	//printf("Configuring port...");
 	port = configure_port(port);
-	printf("done.\n");
+	//printf("done.\n");
 
     // Subscribe to LCM Channels
-    maebot_command_t_subscribe(lcm, "MAEBOT_COMMAND", &command_handler, NULL);
+    //maebot_command_t_subscribe(lcm, "MAEBOT_COMMAND", &command_handler, NULL);
 
     maebot_diff_drive_t_subscribe(lcm, "MAEBOT_DIFF_DRIVE", &diff_drive_handler, NULL);
+    printf("Listening on channel MAEBOT_DIFF_DRIVE\n");
+
     maebot_leds_t_subscribe(lcm, "MAEBOT_LEDS", &leds_handler, NULL);
+    printf("Listening on channel MAEBOT_LEDS\n");
+
     maebot_laser_t_subscribe(lcm, "MAEBOT_LASER", &laser_handler, NULL);
+    printf("Listening on channel MAEBOT_LASER\n");
 
-	printf("Listening...\n");
 
-	command_t command;
-	const uint32_t msg_sz = HEADER_BYTES + COMMAND_T_BUFFER_BYTES;
-	uint8_t buf[msg_sz];
+    //printf("Listening...\n");
 
-	volatile int8_t left_cmd = 0;
-	volatile int8_t right_cmd = 0;
-
-	pthread_t encoder_thread_pid;
-	pthread_create(&encoder_thread_pid, NULL, encoder_thread, NULL);
+	//pthread_t encoder_thread_pid;
+	//pthread_create(&encoder_thread_pid, NULL, encoder_thread, NULL);
 
     pthread_t sama5_command_thread_pid;
 	pthread_create(&sama5_command_thread_pid, NULL, sama5_command_thread, NULL);
 
     pthread_t motor_feedback_thread_pid;
 	pthread_create(&motor_feedback_thread_pid, NULL, motor_feedback_thread, NULL);
+	printf("Publishing on channel MAEBOT_MOTOR_FEEDBACK\n");
+
 
     pthread_t sensor_data_thread_pid;
 	pthread_create(&sensor_data_thread_pid, NULL, sensor_data_thread, NULL);
-
+	printf("Publishing on channel MAEBOT_SENSOR_DATA\n");
 
 	while(1)
 	{
@@ -536,9 +541,9 @@ static void
 diff_drive_handler(const lcm_recv_buf_t *rbuf, const char* channel,
                    const maebot_diff_drive_t* msg, void* user)
 {
-    pthread_mutex_lock(&statelock);
+  //printf("recieved msg on channel DIFF_DRIVE\n");
 
-    printf("recieved msg on channel DIFF_DRIVE\n");
+    pthread_mutex_lock(&statelock);
 
     // copy into shared state;
     shared_state.diff_drive = *msg;
@@ -552,9 +557,9 @@ static void
 laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
               const maebot_laser_t* msg, void* user)
 {
-    pthread_mutex_lock(&statelock);
+  pthread_mutex_lock(&statelock);
 
-    printf("recieved msg on channel LASER\n");
+  //printf("recieved msg on channel LASER\n");
 
     // copy into shared state;
     shared_state.laser = *msg;
@@ -569,7 +574,7 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 {
     pthread_mutex_lock(&statelock);
 
-    printf("recieved msg on channel LEDS\n");
+    //printf("recieved msg on channel LEDS\n");
 
     // copy into shared state;
     shared_state.leds = *msg;
