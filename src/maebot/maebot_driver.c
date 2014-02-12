@@ -73,12 +73,19 @@ command_handler(const lcm_recv_buf_t *rbuf, const char* channel,
         printf("  right_speed = %d \r\n", msg->motor_right_speed);
 
 	// Pass through to sama5
-	command_t command;
-	command.motor_left_speed = msg->motor_left_speed;
-	command.motor_right_speed = msg->motor_right_speed;
-	command.flags = 0;
+	//command_t command;
+	//command.motor_left_speed = msg->motor_left_speed;
+	//command.motor_right_speed = msg->motor_right_speed;
+	//command.flags = 0;
 
-    send_command(command, port);
+    	//send_command(command, port);
+
+	//pthread_mutex_lock(&statelock);
+
+//	shared_state.diff_drive.motor_left_speed = msg.
+
+//	pthread_mutex_unlock(&statelock);
+
 }
 
 
@@ -94,11 +101,11 @@ int send_command(command_t command, int port)
 	serialize_command(&command, (void*)(buf + HEADER_BYTES));
 
 	int i;
-    printf("buf: ");
-    for(i = 0; i < COMMAND_T_BUFFER_BYTES; i++)
-    {
-        printf("%d ", (int) (((uint8_t*)buf + HEADER_BYTES)[i]));
-    }
+    //printf("buf: ");
+    //for(i = 0; i < COMMAND_T_BUFFER_BYTES; i++)
+    //{
+    //    printf("%d ", (int) (((uint8_t*)buf + HEADER_BYTES)[i]));
+    //}
 
     buf[msg_sz - 1] = calc_checksum(buf + HEADER_BYTES, COMMAND_T_BUFFER_BYTES);
 
