@@ -39,7 +39,7 @@ image_u32_t * image_util_u32_decimate(image_u32_t * orig, double decimate_factor
 {
     int new_width = (int)(orig->width / decimate_factor);
     int new_height = (int)(orig->height / decimate_factor);
-    image_u32_t * output = image_u32_create(new_width, new_height);
+    image_u32_t * output = image_u32_create_alignment(new_width, new_height, 4);
 
     for (int y = 0; y < output->height; y++)
         for (int x = 0; x < output->width; x++) {
