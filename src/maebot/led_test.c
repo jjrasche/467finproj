@@ -2,60 +2,78 @@
 #include <stdint.h>
 #include <lcm/lcm.h>
 #include <lcmtypes/maebot_leds_t.h>
+#include <unistd.h>
+
 
 int main()
 {
     lcm_t* lcm = lcm_create(NULL);
     maebot_leds_t msg;
 
-    msg.bottom_led_left = true;
-    msg.bottom_led_middle = true;
-    msg.bottom_led_right = true;
-    msg.line_sensor_leds = true;
+    msg.bottom_led_left = 0;
+    msg.bottom_led_middle = 0;
+    msg.bottom_led_right = 0;
+    msg.line_sensor_leds = 1;
 
-    // Red
+    // Red and Left Bottom
     msg.top_rgb_led_left = 0x100000;
     msg.top_rgb_led_right = 0x100000;
+    msg.bottom_led_left = 1;
 
-    maebot_leds_t_publish(lcm, msg, "MAEBOT_LEDS");
+    maebot_leds_t_publish(lcm, "MAEBOT_LEDS", &msg);
 
-    usleep(200000);
+    usleep(1000000);
 
-    // Green
+    // Green and Middle Bottom
     msg.top_rgb_led_left = 0x1000;
     msg.top_rgb_led_right = 0x1000;
+    msg.bottom_led_left = 0;
+    msg.bottom_led_middle = 1;
 
-    maebot_leds_t_publish(lcm, msg, "MAEBOT_LEDS");
 
-    usleep(200000);
+    maebot_leds_t_publish(lcm, "MAEBOT_LEDS", &msg);
 
-    // Blue
+    usleep(1000000);
+
+    // Blue and Right Bottom
     msg.top_rgb_led_left = 0x10;
     msg.top_rgb_led_right = 0x10;
+    msg.bottom_led_middle = 0;
+    msg.bottom_led_right = 1;
 
-    maebot_leds_t_publish(lcm, msg, "MAEBOT_LEDS");
+    maebot_leds_t_publish(lcm, "MAEBOT_LEDS", &msg);
 
-    usleep(200000);
+    usleep(1000000);
 
-    // White
+    // White and All Bottom
     msg.top_rgb_led_left = 0x101010;
     msg.top_rgb_led_right = 0x101010;
+    msg.bottom_led_left = 1;
+    msg.bottom_led_middle = 1;
+    msg.bottom_led_right = 1;
 
-    maebot_leds_t_publish(lcm, msg, "MAEBOT_LEDS");
+    maebot_leds_t_publish(lcm, "MAEBOT_LEDS", &msg);
 
-    usleep(200000);
-
-
-    msg.bottom_led_left = false;
-    msg.bottom_led_middle = false;
-    msg.bottom_led_right = false;
-    msg.line_sensor_leds = true;
+    usleep(1000000);
 
     // Off
     msg.top_rgb_led_left = 0x0;
     msg.top_rgb_led_right = 0x0;
+    msg.bottom_led_left = 0;
+    msg.bottom_led_middle = 0;
+    msg.bottom_led_right = 0;
+    msg.line_sensor_leds = 0;
 
-    maebot_leds_t_publish(lcm, msg, "MAEBOT_LEDS");
+    maebot_leds_t_publish(lcm, "MAEBOT_LEDS", &msg);
+
+    usleep(1000000);
+
+    // Blue
+    msg.top_rgb_led_left = 0x10;
+    msg.top_rgb_led_right = 0x10;
+    msg.line_sensor_leds = 1;
+
+    maebot_leds_t_publish(lcm, "MAEBOT_LEDS", &msg);
 
 
     return 0;
