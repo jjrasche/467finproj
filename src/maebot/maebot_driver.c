@@ -295,7 +295,7 @@ void* encoder_thread(void* arg)
 
         pthread_mutex_unlock(&statelock);
 
-
+	/*
 		gettimeofday(&tv, &tz);
 		lcm_state.timestamp = tv.tv_usec * 1000;
 		lcm_state.encoder_left_ticks = state.encoder_left_ticks;
@@ -316,6 +316,7 @@ void* encoder_thread(void* arg)
 		lcm_state.motor_current_right = state.motor_current_right;
 
 		maebot_state_t_publish(lcm, "MAEBOT_STATE", &lcm_state);
+		*/
 	}
 
 	return 0;
@@ -503,8 +504,8 @@ int main()
 
     //printf("Listening...\n");
 
-	//pthread_t encoder_thread_pid;
-	//pthread_create(&encoder_thread_pid, NULL, encoder_thread, NULL);
+	pthread_t encoder_thread_pid;
+	pthread_create(&encoder_thread_pid, NULL, encoder_thread, NULL);
 
     pthread_t sama5_command_thread_pid;
 	pthread_create(&sama5_command_thread_pid, NULL, sama5_command_thread, NULL);
@@ -517,7 +518,7 @@ int main()
     pthread_t sensor_data_thread_pid;
 	pthread_create(&sensor_data_thread_pid, NULL, sensor_data_thread, NULL);
 	printf("Publishing on channel MAEBOT_SENSOR_DATA\n");
-
+    
 	while(1)
 	{
 		lcm_handle(lcm);
