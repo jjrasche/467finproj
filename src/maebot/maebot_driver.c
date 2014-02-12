@@ -334,6 +334,10 @@ void* sama5_command_thread(void* arg)
         command.motor_left_speed = abs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
         command.motor_right_speed = abs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
 
+        printf("shared diff_drive left: %f", shared_state.diff_drive.motor_left_speed);
+        printf("command left:           %d", command.motor_left_speed);
+
+
         command.pwm_prea = pwm_prea;
         command.pwm_diva = pwm_diva;
         command.pwm_prd = pwm_prd;
