@@ -10,6 +10,8 @@
 /* Structure to hold robot state for transmission to variscite */
 typedef struct state
 {
+    uint64_t utime;
+
     int32_t encoder_left_ticks;
     int32_t encoder_right_ticks;
 
@@ -18,6 +20,8 @@ typedef struct state
 
     int16_t accel[3]; // X, Y, Z
     int16_t gyro[3];  // r, p, y ?
+
+    int64_t gyro_int[3];
 
     uint16_t line_sensors[3]; // 0 - Left, 1 - Center, 2 - Right
     uint16_t range;
@@ -45,7 +49,7 @@ typedef struct state
 
 void serialize_state(state_t* state, void* buf);
 void deserialize_state(void* buf, state_t* state);
-#define STATE_T_BUFFER_BYTES 41
+#define STATE_T_BUFFER_BYTES 73
 
 
 /* Structure to hold commands received by the variscite */

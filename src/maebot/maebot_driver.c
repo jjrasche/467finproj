@@ -235,6 +235,9 @@ void* sama5_state_thread(void* arg)
 
 		pthread_mutex_lock(&statelock);
 
+        shared_state.motor_feedback.utime = state.utime;
+        shared_state.sensor_data.utime = state.utime;
+
 		// Copy motor feedback
 		shared_state.motor_feedback.encoder_left_ticks = state.encoder_left_ticks;
 		shared_state.motor_feedback.encoder_right_ticks = state.encoder_right_ticks;
@@ -283,47 +286,6 @@ void* sama5_state_thread(void* arg)
 static uint8_t pwm_prea;
 static uint8_t pwm_diva;
 static uint16_t pwm_prd;
-void* sama5_command_thread(void* arg)
-{
-    command_t command;
-
-    while(1)
-    {
-        pthread_mutex_lock(&statelock);
-
-        command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
-        command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
-
-        //printf("shared diff_drive left: %f\n", shared_state.diff_drive.motor_left_speed);
-	//printf("abs:                    %f\n", fabs(shared_state.diff_drive.motor_right_speed));
-        //printf("command left:           %d\n", command.motor_left_speed);
-
-
-        command.pwm_prea = pwm_prea;
-        command.pwm_diva = pwm_diva;
-        command.pwm_prd = pwm_prd;
-
-        command.flags = 0;
-        if(shared_state.diff_drive.motor_left_speed < 0)
-	  command.flags |= flags_motor_left_reverse_mask;
-        if(shared_state.diff_drive.motor_right_speed < 0)
-	  command.flags |= flags_motor_right_reverse_mask;
-	if(shared_state.leds.bottom_led_left)
-	  command.flags |= flags_led_left_power_mask;
-	if(shared_state.leds.bottom_led_middle)
-	  command.flags |= flags_led_middle_power_mask;
-	if(shared_state.leds.bottom_led_right)
-	  command.flags |= flags_led_right_power_mask;
-	if(shared_state.leds.line_sensor_leds)
-	  command.flags |= flags_line_sensor_led_power_mask;
-
-        pthread_mutex_unlock(&statelock);
-
-        send_command(command, port);
-
-        usleep(50000);
-    }
-}
 
 void sama5_send_command()
 {
@@ -340,56 +302,21 @@ void sama5_send_command()
 
         command.flags = 0;
         if(shared_state.diff_drive.motor_left_speed < 0)
-	  command.flags |= flags_motor_left_reverse_mask;
+            command.flags |= flags_motor_left_reverse_mask;
         if(shared_state.diff_drive.motor_right_speed < 0)
-	  command.flags |= flags_motor_right_reverse_mask;
-	if(shared_state.leds.bottom_led_left)
-	  command.flags |= flags_led_left_power_mask;
-	if(shared_state.leds.bottom_led_middle)
-	  command.flags |= flags_led_middle_power_mask;
-	if(shared_state.leds.bottom_led_right)
-	  command.flags |= flags_led_right_power_mask;
-	if(shared_state.leds.line_sensor_leds)
-	  command.flags |= flags_line_sensor_led_power_mask;
+            command.flags |= flags_motor_right_reverse_mask;
+        if(shared_state.leds.bottom_led_left)
+            command.flags |= flags_led_left_power_mask;
+        if(shared_state.leds.bottom_led_middle)
+            command.flags |= flags_led_middle_power_mask;
+        if(shared_state.leds.bottom_led_right)
+            command.flags |= flags_led_right_power_mask;
+        if(shared_state.leds.line_sensor_leds)
+            command.flags |= flags_line_sensor_led_power_mask;
 
         send_command(command, port);
 
-	pthread_mutex_unlock(&statelock);
-}
-
-
-void* sensor_data_thread(void* arg)
-{
-    maebot_sensor_data_t data;
-
-    while(1)
-    {
-        pthread_mutex_lock(&statelock);
-
-        data = shared_state.sensor_data;
-
         pthread_mutex_unlock(&statelock);
-
-        maebot_sensor_data_t_publish(lcm, "MAEBOT_SENSOR_DATA", &data);
-        usleep(50000);
-    }
-}
-
-void* motor_feedback_thread(void* arg)
-{
-    maebot_motor_feedback_t motor_feedback;
-
-    while(1)
-    {
-        pthread_mutex_lock(&statelock);
-
-        motor_feedback = shared_state.motor_feedback;
-
-        pthread_mutex_unlock(&statelock);
-
-        maebot_motor_feedback_t_publish(lcm, "MAEBOT_MOTOR_FEEDBACK", &motor_feedback);
-        usleep(50000);
-    }
 }
 
 static void
@@ -460,22 +387,17 @@ int main()
         return 1;
     }
 
-	//printf("Opening port...");
-
 	port = open_port();
 	if(port == -1)
 	{
 		printf("error opening port\n");
 		return 1;
 	}
-	//printf("done.\n");
-	//printf("Configuring port...");
+
 	port = configure_port(port);
-	//printf("done.\n");
+
 
     // Subscribe to LCM Channels
-    //maebot_command_t_subscribe(lcm, "MAEBOT_COMMAND", &command_handler, NULL);
-
     maebot_diff_drive_t_subscribe(lcm, "MAEBOT_DIFF_DRIVE", &diff_drive_handler, NULL);
     printf("Listening on channel MAEBOT_DIFF_DRIVE\n");
 
@@ -485,20 +407,9 @@ int main()
     maebot_laser_t_subscribe(lcm, "MAEBOT_LASER", &laser_handler, NULL);
     printf("Listening on channel MAEBOT_LASER\n");
 
-
+    // Read state from sama5
 	pthread_t sama5_state_thread_pid;
 	pthread_create(&sama5_state_thread_pid, NULL, sama5_state_thread, NULL);
-
-	//pthread_t sama5_command_thread_pid;
-	//pthread_create(&sama5_command_thread_pid, NULL, sama5_command_thread, NULL);
-
-	//pthread_t motor_feedback_thread_pid;
-	//pthread_create(&motor_feedback_thread_pid, NULL, motor_feedback_thread, NULL);
-	//printf("Publishing on channel MAEBOT_MOTOR_FEEDBACK\n");
-
-	//pthread_t sensor_data_thread_pid;
-	//pthread_create(&sensor_data_thread_pid, NULL, sensor_data_thread, NULL);
-	//printf("Publishing on channel MAEBOT_SENSOR_DATA\n");
 
 	while(1)
 	{
