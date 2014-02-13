@@ -62,35 +62,6 @@ const uint32_t UART_MAGIC_NUMBER = 0xFDFDFDFD;  // Marks Beginning of Message
 lcm_t* lcm;
 int port;
 
-int send_command(command_t command, int port);
-
-/*
-static void
-command_handler(const lcm_recv_buf_t *rbuf, const char* channel,
-	const maebot_command_t* msg, void* user)
-{
-  //printf("Received message on channel \"%s\":\r\n", channel);
-	//printf("  timestamp   = %"PRId64"\n", msg->timestamp);
-	//printf("  left_speed  = %d \r\n", msg->motor_left_speed);
-        //printf("  right_speed = %d \r\n", msg->motor_right_speed);
-
-	// Pass through to sama5
-	//command_t command;
-	//command.motor_left_speed = msg->motor_left_speed;
-	//command.motor_right_speed = msg->motor_right_speed;
-	//command.flags = 0;
-
-    	//send_command(command, port);
-
-	//pthread_mutex_lock(&statelock);
-
-//	shared_state.diff_drive.motor_left_speed = msg.
-
-//	pthread_mutex_unlock(&statelock);
-
-}
-
-*/
 int send_command(command_t command, int port)
 {
     const uint32_t msg_sz = HEADER_BYTES + COMMAND_T_BUFFER_BYTES + 1;
@@ -117,7 +88,6 @@ int send_command(command_t command, int port)
 
     return 0;
 }
-
 
 int open_port()
 {
@@ -222,8 +192,8 @@ state_t get_state(int port)
 	{
        		if(size != STATE_T_BUFFER_BYTES)
 		{
-			printf("Bad packet: expected size=%d, found size=%d\r\n"
-					,STATE_T_BUFFER_BYTES, size);
+			printf("Bad packet: expected size=%d, found size=%d\r\n",
+                   STATE_T_BUFFER_BYTES, size);
 			continue;
 		}
 	        uint8_t buf[STATE_T_BUFFER_BYTES];
@@ -252,16 +222,10 @@ state_t get_state(int port)
 	return state;
 }
 
-
-
 void* encoder_thread(void* arg)
 {
 	state_t state;
-	maebot_state_t lcm_state;
-	struct timeval tv;
-	struct timezone tz;
 
-	//printf("SAMA5 State Thread\n");
 	while(1){
 		// Telemetry handling
 		state = get_state(port);
@@ -272,11 +236,20 @@ void* encoder_thread(void* arg)
         shared_state.motor_feedback.encoder_left_ticks = state.encoder_left_ticks;
         shared_state.motor_feedback.encoder_right_ticks = state.encoder_right_ticks;
 
-        // Figure out handling for speed command deep feedback
-        /*
         shared_state.motor_feedback.motor_left_commanded_speed =
-            (float)state.motor_left_speed_cmd / INT16_MAX;
-        */
+            (float)state.motor_left_speed_cmd / UINT16_MAX;
+        if(state.flags & flags_motor_left_reverse_cmd_mask)
+            shared_state.motor_feedback.motor_left_commanded_speed *= -1.0;
+        shared_state.motor_feedback.motor_left_commanded_speed =
+            (float)state.motor_right_speed_cmd / UINT16_MAX;
+        if(state.flags & flags_motor_right_reverse_cmd_mask)
+            shared_state.motor_feedback.motor_right_commanded_speed *= -1.0;
+
+        // Actual same as commanded for now. No slewing logic yet.
+        shared_state.motor_feedback.motor_left_actual_speed =
+            shared_state.motor_feedback.motor_left_commanded_speed;
+        shared_state.motor_feedback.motor_right_actual_speed =
+            shared_state.motor_feedback.motor_right_commanded_speed;
 
         // Copy sensor data
         shared_state.sensor_data.accel[0] = state.accel[0];
@@ -294,37 +267,10 @@ void* encoder_thread(void* arg)
         shared_state.sensor_data.power_button_pressed = state.flags & flags_power_button_mask;
 
         pthread_mutex_unlock(&statelock);
-
-	/*
-		gettimeofday(&tv, &tz);
-		lcm_state.timestamp = tv.tv_usec * 1000;
-		lcm_state.encoder_left_ticks = state.encoder_left_ticks;
-		lcm_state.encoder_right_ticks = state.encoder_right_ticks;
-		lcm_state.motor_left_speed_cmd = state.motor_left_speed_cmd;
-		lcm_state.motor_right_speed_cmd = state.motor_right_speed_cmd;
-		lcm_state.accel[0] = state.accel[0];
-		lcm_state.accel[1] = state.accel[1];
-		lcm_state.accel[2] = state.accel[2];
-		lcm_state.gyro[0] = state.gyro[0];
-		lcm_state.gyro[1] = state.gyro[1];
-		lcm_state.gyro[2] = state.gyro[2];
-		lcm_state.line_sensors[0] = state.line_sensors[0];
-		lcm_state.line_sensors[1] = state.line_sensors[1];
-		lcm_state.line_sensors[2] = state.line_sensors[2];
-		lcm_state.range = state.range;
-		lcm_state.motor_current_left = state.motor_current_left;
-		lcm_state.motor_current_right = state.motor_current_right;
-
-		maebot_state_t_publish(lcm, "MAEBOT_STATE", &lcm_state);
-		*/
 	}
 
 	return 0;
 }
-
-
-
-
 
 static uint8_t pwm_prea;
 static uint8_t pwm_diva;
@@ -367,7 +313,6 @@ void* sama5_command_thread(void* arg)
     }
 }
 
-
 void* sensor_data_thread(void* arg)
 {
     maebot_sensor_data_t data;
@@ -402,8 +347,6 @@ void* motor_feedback_thread(void* arg)
     }
 }
 
-
-
 static void
 diff_drive_handler(const lcm_recv_buf_t *rbuf, const char* channel,
                    const maebot_diff_drive_t* msg, void* user);
@@ -415,7 +358,6 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
              const maebot_leds_t* msg, void* user);
-
 
 void maebot_shared_state_init(maebot_shared_state_t* state)
 {
@@ -457,10 +399,7 @@ void maebot_shared_state_init(maebot_shared_state_t* state)
 
     // laser
     state->laser.laser_power = 0;
-
 }
-
-
 
 int main()
 {
@@ -502,8 +441,6 @@ int main()
     printf("Listening on channel MAEBOT_LASER\n");
 
 
-    //printf("Listening...\n");
-
 	pthread_t encoder_thread_pid;
 	pthread_create(&encoder_thread_pid, NULL, encoder_thread, NULL);
 
@@ -514,21 +451,15 @@ int main()
 	pthread_create(&motor_feedback_thread_pid, NULL, motor_feedback_thread, NULL);
 	printf("Publishing on channel MAEBOT_MOTOR_FEEDBACK\n");
 
-
     pthread_t sensor_data_thread_pid;
 	pthread_create(&sensor_data_thread_pid, NULL, sensor_data_thread, NULL);
 	printf("Publishing on channel MAEBOT_SENSOR_DATA\n");
-    
+
 	while(1)
 	{
 		lcm_handle(lcm);
 	}
 }
-
-
-
-
-
 
 
 //////////////////////
@@ -567,7 +498,6 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 
     pthread_mutex_unlock(&statelock);
 }
-
 
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,

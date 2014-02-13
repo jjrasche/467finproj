@@ -13,8 +13,8 @@ typedef struct state
     int32_t encoder_left_ticks;
     int32_t encoder_right_ticks;
 
-    int16_t motor_left_speed_cmd;
-    int16_t motor_right_speed_cmd;
+    uint16_t motor_left_speed_cmd;
+    uint16_t motor_right_speed_cmd;
 
     int16_t accel[3]; // X, Y, Z
     int16_t gyro[3];  // r, p, y ?
@@ -32,13 +32,16 @@ typedef struct state
     uint8_t flags;
 
 /*
-  unsigned int power_button_pressed : 1;
-  unsigned int extra                : 7;
+  unsigned int power_button_pressed    : 1;
+  unsigned int motor_left_reverse_cmd  : 1;
+  unsigned int motor_right_reverse_cmd : 1;
+  unsigned int extra                   : 5;
 */
 } state_t;
 
 #define flags_power_button_mask (1 << 0);
-
+#define flags_motor_left_reverse_cmd_mask (1 << 1);
+#define flags_motor_right_reverse_cmd_mask (1 << 2);
 
 void serialize_state(state_t* state, void* buf);
 void deserialize_state(void* buf, state_t* state);
