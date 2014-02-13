@@ -266,6 +266,9 @@ void* sama5_state_thread(void* arg)
 		shared_state.sensor_data.gyro[0] = state.gyro[0];
 		shared_state.sensor_data.gyro[1] = state.gyro[1];
 		shared_state.sensor_data.gyro[2] = state.gyro[2];
+        shared_state.sensor_data.gyro_int[0] = state.gyro_int[0];
+        shared_state.sensor_data.gyro_int[1] = state.gyro_int[1];
+        shared_state.sensor_data.gyro_int[2] = state.gyro_int[2];
 		shared_state.sensor_data.line_sensors[0] = state.line_sensors[0];
 		shared_state.sensor_data.line_sensors[1] = state.line_sensors[1];
 		shared_state.sensor_data.line_sensors[2] = state.line_sensors[2];
