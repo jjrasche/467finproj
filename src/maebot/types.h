@@ -39,9 +39,9 @@ typedef struct state
 */
 } state_t;
 
-#define flags_power_button_mask (1 << 0);
-#define flags_motor_left_reverse_cmd_mask (1 << 1);
-#define flags_motor_right_reverse_cmd_mask (1 << 2);
+#define flags_power_button_mask (1 << 0)
+#define flags_motor_left_reverse_cmd_mask (1 << 1)
+#define flags_motor_right_reverse_cmd_mask (1 << 2)
 
 void serialize_state(state_t* state, void* buf);
 void deserialize_state(void* buf, state_t* state);
