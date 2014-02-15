@@ -257,9 +257,9 @@ state_t get_state(int port)
 void* encoder_thread(void* arg)
 {
 	state_t state;
-	maebot_state_t lcm_state;
-	struct timeval tv;
-	struct timezone tz;
+//	maebot_state_t lcm_state;
+//	struct timeval tv;
+//	struct timezone tz;
 
 	//printf("SAMA5 State Thread\n");
 	while(1){
@@ -518,7 +518,7 @@ int main()
     pthread_t sensor_data_thread_pid;
 	pthread_create(&sensor_data_thread_pid, NULL, sensor_data_thread, NULL);
 	printf("Publishing on channel MAEBOT_SENSOR_DATA\n");
-    
+
 	while(1)
 	{
 		lcm_handle(lcm);
