@@ -33,6 +33,33 @@ vx_object_t * vxo_image_texflags(vx_resc_t * tex, int width, int height,
                           0.0f, 1.0f,
                           1.0f, 1.0f };
 
+    if ((img_flags & VXO_IMAGE_CW90) != 0) {
+        data[0] = 0;
+        data[1] = (float)width;
+        data[2] = 0;
+        data[3] = 0;
+        data[4] = (float)height;
+        data[5] = (float)width;
+        data[6] = (float)height;
+        data[7] = 0;
+    }
+
+    if ((img_flags & VXO_IMAGE_CCW90) != 0) {
+        data[0] = (float)height;
+        data[1] = 0;
+        data[2] = (float)height;
+        data[3] = (float)width;
+        data[4] = 0;
+        data[5] = 0;
+        data[6] = 0;
+        data[7] = (float)width;
+    }
+
+    if ((img_flags & VXO_IMAGE_FLIPX) != 0) {
+        for (int i = 0; i < 4; i++)
+            texcoords[2* i + 0] = 1 - texcoords[2*i + 0];
+    }
+
     if ((img_flags & VXO_IMAGE_FLIPY) != 0) {
         for (int i = 0; i < 4; i++)
             texcoords[2* i + 1] = 1 - texcoords[2*i + 1];

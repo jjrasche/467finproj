@@ -31,7 +31,7 @@ void make_font(const char *basename)
         exit(-1);
     }
 
-    char *bparambuf;
+    char *bparambuf = NULL;
     int bparambuflen;
 
     if (1) {
@@ -80,9 +80,9 @@ void make_font(const char *basename)
         exit(-1);
     }
 
+    free(bparambuf);
     fwrite(cvxfbuf, 1, cvxfbuflen, f);
     fclose(f);
-    free(bparambuf);
 }
 
 int main(int argc, char *argv[])

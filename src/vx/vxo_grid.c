@@ -59,9 +59,9 @@ static void vxo_grid_destroy(void * ignored)
 }
 
 // 1M grid by default
-vx_object_t * vxo_grid(void)
+vx_object_t * vxo_grid_colored(vx_style_t * style)
 {
-    // Make sure the static geometry is initialized safely, corcylinderly, and quickly
+    // Make sure the static geometry is initialized safely, correctly, and quickly
     if (grid_vertices == NULL) {
         vx_global_lock();
         if (grid_vertices == NULL) {
@@ -71,5 +71,10 @@ vx_object_t * vxo_grid(void)
         vx_global_unlock();
     }
 
-    return vxo_lines(grid_vertices, N_AXES_LINES*4, GL_LINES, vxo_lines_style(vx_gray, 1.0f));
+    return vxo_lines(grid_vertices, N_AXES_LINES*4, GL_LINES, style);
+}
+
+vx_object_t * vxo_grid(void)
+{
+    return vxo_grid_colored(vxo_lines_style(vx_gray, 1.0f));
 }

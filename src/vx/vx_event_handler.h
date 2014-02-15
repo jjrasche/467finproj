@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+/* Camera and event structs are read only
+   and copies must be made for local storage*/
 struct vx_event_handler
 {
     int dispatch_order; // determines which order the event handlers will called in. Lower numbers get first dibs

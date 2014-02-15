@@ -68,6 +68,7 @@ void * listen_run(void * usr)
             exit(1);
         }
 
+        // printf("RECV code %d len %d\n", code, len);
 
         if (code == VX_TCP_CODES) {
             state->disp->send_codes(state->disp, buf, len);

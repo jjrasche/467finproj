@@ -10,6 +10,7 @@ extern "C" {
 
 // XXX Currently unable to do dynamic sizeing
 vx_object_t * vxo_grid(void); // 1M grid by default
+vx_object_t * vxo_grid_colored(vx_style_t * style);
 
 #ifdef __cplusplus
 }
