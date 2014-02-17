@@ -22,7 +22,7 @@ src/eecs467/lcmtypes/%.java: ../lcmtypes/%.lcm
 $(LCMTYPES_JAR): | builddir
 	@echo "[$(LCMTYPES_JAR)]"
 	@javac -cp $(LCM_JAR) -d $(BUILD_PATH) $(LCMTYPES_JAVA)
-	@jar cf $(LCMTYPES_JAR) $(BUILD_PATH)/**/*/*.class
+	@jar cf $(LCMTYPES_JAR) -C $(BUILD_PATH) .
 
 builddir:
 	@echo "[$(BUILD_PATH)]"
