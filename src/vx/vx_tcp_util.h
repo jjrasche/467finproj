@@ -6,6 +6,9 @@
 #include "vx_code_output_stream.h"
 #include "vx_camera_pos.h"
 
+// collection of functions related to marshaling over TCP stream. Might
+// eventually rename to vx_remote_util
+
 zhash_t * vx_tcp_util_unpack_resources(vx_code_input_stream_t * cins);
 void vx_tcp_util_pack_resources(zhash_t * resources, vx_code_output_stream_t * couts);
 
