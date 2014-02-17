@@ -5,8 +5,8 @@ LDFLAGS = $(LDFLAGS_STD) $(LDFLAGS_COMMON) $(LDFLAGS_LCMTYPES) $(LDFLAGS_GLIB) $
 
 MAEBOT_OBJS = types.o
 
-LCMTYPES_C := $(shell cd ../lcmtypes && ls *.c)
-LCMTYPES_C := $(addprefix ../lcmtypes/,$(LCMTYPES_C))
+#LCMTYPES_C := $(shell cd ../lcmtypes && ls *.c)
+#LCMTYPES_C := $(addprefix ../lcmtypes/,$(LCMTYPES_C))
 
 LIBMAEBOT=$(LIB_PATH)/libmaebot.a
 
@@ -18,7 +18,7 @@ $(LIBMAEBOT): $(MAEBOT_OBJS)
 	@ar rc $@ $(MAEBOT_OBJS)
 
 driver: $(LIBMAEBOT) maebot_driver.c
-	@gcc -o maebot_driver maebot_driver.c $(LCMTYPES_C) $(MAEBOT_OBJS) $(LDFLAGS) $(CFLAGS)
+	@gcc -o maebot_driver maebot_driver.c $(MAEBOT_OBJS) $(LDFLAGS) $(CFLAGS)
 	@cp maebot_driver ../../bin/
 
 clean:
