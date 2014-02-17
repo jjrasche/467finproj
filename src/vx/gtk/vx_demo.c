@@ -243,7 +243,10 @@ int main(int argc, char ** argv)
 
     draw(state, state->world);
 
-    vx_remote_display_source_t * cxn = vx_remote_display_source_create(&state->app);
+    vx_remote_display_source_attr_t remote_attr;
+    vx_remote_display_source_attr_init(&remote_attr);
+    remote_attr.advertise_name = "Vx Demo";
+    vx_remote_display_source_t * cxn = vx_remote_display_source_create_attr(&state->app, &remote_attr);
     pthread_create(&state->animate_thread, NULL, render_loop, state);
 
     if (!getopt_get_bool(gopt,"no-gtk")) {

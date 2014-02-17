@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <ifaddrs.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -16,9 +17,6 @@
 
 #include "common/ssocket.h"
 #include "common/ioutils.h"
-
-#define VX_AD_MAGIC 0x550166fe
-
 
 struct vx_remote_display_source
 {
@@ -145,37 +143,72 @@ static void * ad_run(void * vptr)
     if (verbose) printf("Starting advertisement thread\n");
     vx_remote_display_source_t * cxn_mgr = vptr;
 
-    struct sockaddr_in remote_addr;
-    memset(&remote_addr, 0, sizeof(struct sockaddr_in));
-    remote_addr.sin_family = AF_INET;
-    remote_addr.sin_port = htons(cxn_mgr->attr.advertise_port);
-    remote_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    if (cxn_mgr->attr.advertise_port == 0) {
+        printf("NFO: Not starting remote advertise thread\n");
+        return NULL;
+    }
 
-    // XXX Hard code broadcast address to match tablet's IP. Need to send advertisements over all interfaces
-    if (1) {
-        const char * ip_addr_str = "192.168.3.255";
-        if (!inet_pton(AF_INET, ip_addr_str , &remote_addr.sin_addr.s_addr)) {
-            printf("Failed to get addr for bcast %s\n", ip_addr_str);
+    // store the sockaddr_in structs by value
+    zarray_t * bcast_addrs = zarray_create(sizeof(struct sockaddr_in));
+
+    struct ifaddrs *head = NULL;
+    if (getifaddrs(&head) != 0) {
+        perror("Failed to read interfaces");
+        exit(1);
+    }
+
+    for (struct ifaddrs * cur = head; cur != NULL; cur = cur->ifa_next) {
+        if (cur->ifa_addr == NULL) {
+            printf("No address here!\n");
+            continue;
+        }
+
+        if (cur->ifa_addr->sa_family == AF_INET) {
+            struct sockaddr_in remote_addr;
+            memset(&remote_addr, 0, sizeof(struct sockaddr_in));
+            remote_addr.sin_family = AF_INET;
+            remote_addr.sin_port = htons(cxn_mgr->attr.advertise_port);
+
+            memcpy(&remote_addr.sin_addr, &((struct sockaddr_in*)cur->ifa_ifu.ifu_broadaddr)->sin_addr, sizeof(struct in_addr));
+
+            // For future reference: (bcast only valid for IPv4)
+            /* char * addr = inet_ntoa(((struct sockaddr_in*)cur->ifa_addr)->sin_addr); */
+            /* char * bcast = inet_ntoa(((struct sockaddr_in*)cur->ifa_ifu.ifu_broadaddr)->sin_addr); */
+            /* printf("iface %s: addr %s  bcast %s\n", cur->ifa_name, addr, bcast); */
+
+            zarray_add(bcast_addrs, &remote_addr);
         }
     }
+
+    freeifaddrs(head);
 
     vx_code_output_stream_t * outs = vx_code_output_stream_create(1024);
     outs->write_uint32(outs, VX_AD_MAGIC);
     outs->write_uint32(outs, cxn_mgr->attr.connection_port);
     outs->write_str(outs, cxn_mgr->attr.advertise_name);
 
+    while (1) {
+        for (int i = 0; i < zarray_size(bcast_addrs); i++) {
+            struct sockaddr_in * bcast = NULL;
+            zarray_get_volatile(bcast_addrs, i, &bcast);
 
-    while(1) {
-        if (sendto(cxn_mgr->ad_sock, outs->data, outs->pos, 0, (struct sockaddr*) &remote_addr, sizeof(remote_addr)) < 0) {
+            if (sendto(cxn_mgr->ad_sock, outs->data, outs->pos, 0,
+                       (struct sockaddr*) bcast, sizeof(struct sockaddr_in)) < 0) {
 
-            // errno is usually EBADF on shutdown
-            if (errno != EBADF || !cxn_mgr->shutdown)
-                perror("sendto");
+                // errno is usually EBADF on shutdown
+                if (errno != EBADF || !cxn_mgr->shutdown)
+                    perror("sendto");
 
-            break;
+                // ignore errors (except printing them)
+            }
         }
+        if (cxn_mgr->shutdown)
+            break;
         sleep(1);
     }
+
+    zarray_destroy(bcast_addrs);
+
     if (verbose) printf("Advertisement thread is exiting\n");
     vx_code_output_stream_destroy(outs);
 
@@ -187,7 +220,6 @@ static void * ad_run(void * vptr)
 vx_remote_display_source_t * vx_remote_display_source_create_attr(vx_application_t * app,
                                                                   const vx_remote_display_source_attr_t * attr)
 {
-
     vx_remote_display_source_t * cxn_mgr = calloc(1, sizeof(vx_remote_display_source_t));
     memcpy(&cxn_mgr->app, app, sizeof(vx_application_t));
 
@@ -198,7 +230,6 @@ vx_remote_display_source_t * vx_remote_display_source_create_attr(vx_application
         // set defaults
         vx_remote_display_source_attr_init(&cxn_mgr->attr);
     }
-
 
     cxn_mgr->disp_list = zarray_create(sizeof(vx_display_t*));
 

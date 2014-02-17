@@ -11,6 +11,7 @@ extern "C" {
 
 #define DEFAULT_VX_AD_PORT 15150
 #define DEFAULT_VX_CXN_PORT 15151
+#define VX_AD_MAGIC 0x550166fe
 
 typedef struct
 {
