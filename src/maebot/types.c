@@ -79,7 +79,6 @@ void deserialize_state(void* buf, state_t* state)
 
 void serialize_command(command_t* command, void* buf)
 {
-//    uint32_t* bu32 = (uint32_t*) buf;
     int16_t*  bu16  = (int16_t*)  buf;
     uint8_t*  bu8  = (uint8_t*)  buf;
 
@@ -97,7 +96,6 @@ void serialize_command(command_t* command, void* buf)
 
 void deserialize_command(void* buf, command_t* command)
 {
-//    uint32_t* bu32 = (uint32_t*) buf;
     int16_t* bu16 = (int16_t*) buf;
     uint8_t* bu8 = (uint8_t*) buf;
 
