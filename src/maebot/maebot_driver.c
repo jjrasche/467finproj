@@ -25,6 +25,9 @@
 
 #include <sys/time.h>
 #include <math.h>
+#include <linux/i2c-dev.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 
 #ifndef max
 	#define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
@@ -501,6 +504,10 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     pthread_mutex_unlock(&statelock);
 }
 
+
+#define I2C_DEVICE_PATH "/dev/i2c-3"
+#define LED_ADDRESS 0x4D
+
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
              const maebot_leds_t* msg, void* user)
@@ -513,4 +520,27 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     shared_state.leds = *msg;
 
     pthread_mutex_unlock(&statelock);
+
+    int fd;
+    fd = open(I2C_DEVICE_PATH, O_RDWR);
+    if (ioctl(fd, I2C_SLAVE, LED_ADDRESS) < 0) {
+        printf("Failed to set slave address: %m\n");
+    }
+
+    uint8_t cmd[6];
+    cmd[0] = (1 << 5) | ((msg->top_rgb_led_right >> (16 + 3)) & 0x1F);
+    cmd[1] = (2 << 5) | ((msg->top_rgb_led_right >> ( 8 + 3)) & 0x1F);
+    cmd[2] = (3 << 5) | ((msg->top_rgb_led_right >> ( 0 + 3)) & 0x1F);
+    cmd[3] = (4 << 5) | ((msg->top_rgb_led_left  >> (16 + 3)) & 0x1F);
+    cmd[4] = (5 << 5) | ((msg->top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
+    cmd[5] = (6 << 5) | ((msg->top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
+
+    int i;
+    for(i = 0; i < 6; i++)
+    {
+        if (i2c_smbus_write_byte(fd, cmd[i]) < 0)
+            printf("Failed to write to I2C device: %m\n");
+    }
+
+    close(fd);
 }
