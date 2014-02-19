@@ -166,8 +166,8 @@ static void* send_cmds(void *data)
         // Map vector direction to motor command.
         state->cmd.utime = utime_now();
 
-        int sign_x = matd_get(n, 0, 0) > 0; // > 0 if positive
-        int sign_y = matd_get(n, 1, 0) > 0; // > 0 if positive
+        int sign_x = matd_get(n, 0, 0) >= 0; // > 0 if positive
+        int sign_y = matd_get(n, 1, 0) >= 0; // > 0 if positive
         float magx = fabs(matd_get(n, 0, 0));
         float magy = fabs(matd_get(n, 1, 0));
         float x2y = magx > 0 ? (magx-magy)/magx : 0.0f;
@@ -193,19 +193,19 @@ static void* send_cmds(void *data)
             }
         } else if (!sign_y && !sign_x) {
             // Quad III
-            state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale;
-            if (magx > magy) {
-                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*x2y;
-            } else {
-                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*y2x;
-            }
-        } else {
-            // Quad IV
             state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale;
             if (magx > magy) {
                 state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*x2y;
             } else {
                 state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*y2x;
+            }
+        } else {
+            // Quad IV
+            state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale;
+            if (magx > magy) {
+                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*x2y;
+            } else {
+                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*y2x;
             }
         }
 
