@@ -1,6 +1,8 @@
 
 struct maebot_leds_t
 {
+    int64_t utime;
+
     // These take hex rgb values, each octet caps at 0x1F.
     // Form: 0xrrggbb. The MSB is ignored.
     int32_t top_rgb_led_left;

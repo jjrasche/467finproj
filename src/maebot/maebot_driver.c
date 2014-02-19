@@ -25,6 +25,9 @@
 
 #include <sys/time.h>
 #include <math.h>
+#include <linux/i2c-dev.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 
 #ifndef max
 	#define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
@@ -222,7 +225,7 @@ state_t get_state(int port)
 	return state;
 }
 
-void* encoder_thread(void* arg)
+void* sama5_state_thread(void* arg)
 {
 	state_t state;
 
@@ -230,45 +233,54 @@ void* encoder_thread(void* arg)
 		// Telemetry handling
 		state = get_state(port);
 
-        pthread_mutex_lock(&statelock);
+		pthread_mutex_lock(&statelock);
 
-        // Copy motor feedback
-        shared_state.motor_feedback.encoder_left_ticks = state.encoder_left_ticks;
-        shared_state.motor_feedback.encoder_right_ticks = state.encoder_right_ticks;
+        shared_state.motor_feedback.utime = state.utime;
+        shared_state.sensor_data.utime = state.utime;
 
-        shared_state.motor_feedback.motor_left_commanded_speed =
-            (float)state.motor_left_speed_cmd / UINT16_MAX;
-        if(state.flags & flags_motor_left_reverse_cmd_mask) {
-            shared_state.motor_feedback.motor_left_commanded_speed *= -1.0;
-        }
-        shared_state.motor_feedback.motor_left_commanded_speed =
-            (float)state.motor_right_speed_cmd / UINT16_MAX;
-        if(state.flags & flags_motor_right_reverse_cmd_mask) {
-            shared_state.motor_feedback.motor_right_commanded_speed *= -1.0;
-        }
+		// Copy motor feedback
+		shared_state.motor_feedback.encoder_left_ticks = state.encoder_left_ticks;
+		shared_state.motor_feedback.encoder_right_ticks = state.encoder_right_ticks;
 
-        // Actual same as commanded for now. No slewing logic yet.
-        shared_state.motor_feedback.motor_left_actual_speed =
-            shared_state.motor_feedback.motor_left_commanded_speed;
-        shared_state.motor_feedback.motor_right_actual_speed =
-            shared_state.motor_feedback.motor_right_commanded_speed;
+		shared_state.motor_feedback.motor_left_commanded_speed =
+		  (float)state.motor_left_speed_cmd / UINT16_MAX;
+		if(state.flags & flags_motor_left_reverse_cmd_mask) {
+		  shared_state.motor_feedback.motor_left_commanded_speed *= -1.0;
+		}
+		shared_state.motor_feedback.motor_left_commanded_speed =
+		  (float)state.motor_right_speed_cmd / UINT16_MAX;
+		if(state.flags & flags_motor_right_reverse_cmd_mask) {
+		  shared_state.motor_feedback.motor_right_commanded_speed *= -1.0;
+		}
 
-        // Copy sensor data
-        shared_state.sensor_data.accel[0] = state.accel[0];
-        shared_state.sensor_data.accel[1] = state.accel[1];
-        shared_state.sensor_data.accel[2] = state.accel[2];
-        shared_state.sensor_data.gyro[0] = state.gyro[0];
-        shared_state.sensor_data.gyro[1] = state.gyro[1];
-        shared_state.sensor_data.gyro[2] = state.gyro[2];
-        shared_state.sensor_data.line_sensors[0] = state.line_sensors[0];
-        shared_state.sensor_data.line_sensors[1] = state.line_sensors[1];
-        shared_state.sensor_data.line_sensors[2] = state.line_sensors[2];
-        shared_state.sensor_data.range = state.range;
-        shared_state.motor_feedback.motor_current_left = state.motor_current_left;
-        shared_state.motor_feedback.motor_current_right = state.motor_current_right;
-        shared_state.sensor_data.power_button_pressed = state.flags & flags_power_button_mask;
+		// Actual same as commanded for now. No slewing logic yet.
+		shared_state.motor_feedback.motor_left_actual_speed =
+		  shared_state.motor_feedback.motor_left_commanded_speed;
+		shared_state.motor_feedback.motor_right_actual_speed =
+		  shared_state.motor_feedback.motor_right_commanded_speed;
 
-        pthread_mutex_unlock(&statelock);
+		// Copy sensor data
+		shared_state.sensor_data.accel[0] = state.accel[0];
+		shared_state.sensor_data.accel[1] = state.accel[1];
+		shared_state.sensor_data.accel[2] = state.accel[2];
+		shared_state.sensor_data.gyro[0] = state.gyro[0];
+		shared_state.sensor_data.gyro[1] = state.gyro[1];
+		shared_state.sensor_data.gyro[2] = state.gyro[2];
+        shared_state.sensor_data.gyro_int[0] = state.gyro_int[0];
+        shared_state.sensor_data.gyro_int[1] = state.gyro_int[1];
+        shared_state.sensor_data.gyro_int[2] = state.gyro_int[2];
+		shared_state.sensor_data.line_sensors[0] = state.line_sensors[0];
+		shared_state.sensor_data.line_sensors[1] = state.line_sensors[1];
+		shared_state.sensor_data.line_sensors[2] = state.line_sensors[2];
+		shared_state.sensor_data.range = state.range;
+		shared_state.motor_feedback.motor_current_left = state.motor_current_left;
+		shared_state.motor_feedback.motor_current_right = state.motor_current_right;
+		shared_state.sensor_data.power_button_pressed = state.flags & flags_power_button_mask;
+
+		maebot_motor_feedback_t_publish(lcm, "MAEBOT_MOTOR_FEEDBACK", &shared_state.motor_feedback);
+		maebot_sensor_data_t_publish(lcm, "MAEBOT_SENSOR_DATA", &shared_state.sensor_data);
+
+		pthread_mutex_unlock(&statelock);
 	}
 
 	return 0;
@@ -277,21 +289,15 @@ void* encoder_thread(void* arg)
 static uint8_t pwm_prea;
 static uint8_t pwm_diva;
 static uint16_t pwm_prd;
-void* sama5_command_thread(void* arg)
-{
-    command_t command;
 
-    while(1)
-    {
-        pthread_mutex_lock(&statelock);
+void sama5_send_command()
+{
+  command_t command;
+
+  pthread_mutex_lock(&statelock);
 
         command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
         command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
-
-        //printf("shared diff_drive left: %f\n", shared_state.diff_drive.motor_left_speed);
-	//printf("abs:                    %f\n", fabs(shared_state.diff_drive.motor_right_speed));
-        //printf("command left:           %d\n", command.motor_left_speed);
-
 
         command.pwm_prea = pwm_prea;
         command.pwm_diva = pwm_diva;
@@ -302,51 +308,18 @@ void* sama5_command_thread(void* arg)
             command.flags |= flags_motor_left_reverse_mask;
         if(shared_state.diff_drive.motor_right_speed < 0)
             command.flags |= flags_motor_right_reverse_mask;
-        command.flags |= shared_state.leds.bottom_led_left & flags_led_left_power_mask;
-        command.flags |= shared_state.leds.bottom_led_middle & flags_led_middle_power_mask;
-        command.flags |= shared_state.leds.bottom_led_right & flags_led_right_power_mask;
-        command.flags |= shared_state.leds.line_sensor_leds & flags_line_sensor_led_power_mask;
-
-        pthread_mutex_unlock(&statelock);
+        if(shared_state.leds.bottom_led_left)
+            command.flags |= flags_led_left_power_mask;
+        if(shared_state.leds.bottom_led_middle)
+            command.flags |= flags_led_middle_power_mask;
+        if(shared_state.leds.bottom_led_right)
+            command.flags |= flags_led_right_power_mask;
+        if(shared_state.leds.line_sensor_leds)
+            command.flags |= flags_line_sensor_led_power_mask;
 
         send_command(command, port);
 
-        usleep(50000);
-    }
-}
-
-void* sensor_data_thread(void* arg)
-{
-    maebot_sensor_data_t data;
-
-    while(1)
-    {
-        pthread_mutex_lock(&statelock);
-
-        data = shared_state.sensor_data;
-
         pthread_mutex_unlock(&statelock);
-
-        maebot_sensor_data_t_publish(lcm, "MAEBOT_SENSOR_DATA", &data);
-        usleep(50000);
-    }
-}
-
-void* motor_feedback_thread(void* arg)
-{
-    maebot_motor_feedback_t motor_feedback;
-
-    while(1)
-    {
-        pthread_mutex_lock(&statelock);
-
-        motor_feedback = shared_state.motor_feedback;
-
-        pthread_mutex_unlock(&statelock);
-
-        maebot_motor_feedback_t_publish(lcm, "MAEBOT_MOTOR_FEEDBACK", &motor_feedback);
-        usleep(50000);
-    }
 }
 
 static void
@@ -417,22 +390,17 @@ int main()
         return 1;
     }
 
-	//printf("Opening port...");
-
 	port = open_port();
 	if(port == -1)
 	{
 		printf("error opening port\n");
 		return 1;
 	}
-	//printf("done.\n");
-	//printf("Configuring port...");
+
 	port = configure_port(port);
-	//printf("done.\n");
+
 
     // Subscribe to LCM Channels
-    //maebot_command_t_subscribe(lcm, "MAEBOT_COMMAND", &command_handler, NULL);
-
     maebot_diff_drive_t_subscribe(lcm, "MAEBOT_DIFF_DRIVE", &diff_drive_handler, NULL);
     printf("Listening on channel MAEBOT_DIFF_DRIVE\n");
 
@@ -442,20 +410,9 @@ int main()
     maebot_laser_t_subscribe(lcm, "MAEBOT_LASER", &laser_handler, NULL);
     printf("Listening on channel MAEBOT_LASER\n");
 
-
-	pthread_t encoder_thread_pid;
-	pthread_create(&encoder_thread_pid, NULL, encoder_thread, NULL);
-
-    pthread_t sama5_command_thread_pid;
-	pthread_create(&sama5_command_thread_pid, NULL, sama5_command_thread, NULL);
-
-    pthread_t motor_feedback_thread_pid;
-	pthread_create(&motor_feedback_thread_pid, NULL, motor_feedback_thread, NULL);
-	printf("Publishing on channel MAEBOT_MOTOR_FEEDBACK\n");
-
-    pthread_t sensor_data_thread_pid;
-	pthread_create(&sensor_data_thread_pid, NULL, sensor_data_thread, NULL);
-	printf("Publishing on channel MAEBOT_SENSOR_DATA\n");
+    // Read state from sama5
+	pthread_t sama5_state_thread_pid;
+	pthread_create(&sama5_state_thread_pid, NULL, sama5_state_thread, NULL);
 
 	while(1)
 	{
@@ -485,6 +442,8 @@ diff_drive_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     clamp(&shared_state.diff_drive.motor_right_speed, -1.0, 1.0);
 
     pthread_mutex_unlock(&statelock);
+
+    sama5_send_command();
 }
 
 static void
@@ -499,7 +458,21 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     shared_state.laser = *msg;
 
     pthread_mutex_unlock(&statelock);
+
+    if(msg->laser_power){
+      if(system("echo 1 > /sys/class/gpio/gpio172/value")){
+	printf("Error writing to laser pin");
+      }
+    }
+    else{
+      if(system("echo 0 > /sys/class/gpio/gpio172/value")){
+	printf("Error writing to laser pin");
+      }
+    }
 }
+
+#define I2C_DEVICE_PATH "/dev/i2c-3"
+#define LED_ADDRESS 0x4D
 
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
@@ -513,4 +486,29 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     shared_state.leds = *msg;
 
     pthread_mutex_unlock(&statelock);
+
+    sama5_send_command();
+
+    int fd;
+    fd = open(I2C_DEVICE_PATH, O_RDWR);
+    if (ioctl(fd, I2C_SLAVE, LED_ADDRESS) < 0) {
+        printf("Failed to set slave address: %m\n");
+    }
+
+    uint8_t cmd[6];
+    cmd[0] = (1 << 5) | ((msg->top_rgb_led_right >> (16 + 3)) & 0x1F);
+    cmd[1] = (2 << 5) | ((msg->top_rgb_led_right >> ( 8 + 3)) & 0x1F);
+    cmd[2] = (3 << 5) | ((msg->top_rgb_led_right >> ( 0 + 3)) & 0x1F);
+    cmd[3] = (4 << 5) | ((msg->top_rgb_led_left  >> (16 + 3)) & 0x1F);
+    cmd[4] = (5 << 5) | ((msg->top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
+    cmd[5] = (6 << 5) | ((msg->top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
+
+    int i;
+    for(i = 0; i < 6; i++)
+    {
+        if (i2c_smbus_write_byte(fd, cmd[i]) < 0)
+            printf("Failed to write to I2C device: %m\n");
+    }
+
+    close(fd);
 }

@@ -3,76 +3,90 @@
 
 void serialize_state(state_t* state, void* buf)
 {
+    int64_t*  b64  = (int64_t*)  buf;
     int32_t*  b32  = (int32_t*)  buf;
     int16_t*  b16  = (int16_t*)  buf;
     uint16_t* bu16 = (uint16_t*) buf;
-    uint8_t*  bu8  = (uint8_t*)   buf;
+    uint8_t*  bu8  = (uint8_t*)  buf;
 
-    b32[0] = state->encoder_left_ticks;
-    b32[1] = state->encoder_right_ticks;
+    b64[0] = state->utime;
 
-    b16[4] = state->motor_left_speed_cmd;
-    b16[5] = state->motor_right_speed_cmd;
+    b32[2] = state->encoder_left_ticks;
+    b32[3] = state->encoder_right_ticks;
 
-    b16[6] = state->accel[0];
-    b16[7] = state->accel[1];
-    b16[8] = state->accel[2];
-    b16[9] = state->gyro[0];
-    b16[10] = state->gyro[1];
-    b16[11] = state->gyro[2];
+    b16[8] = state->motor_left_speed_cmd;
+    b16[9] = state->motor_right_speed_cmd;
 
-    bu16[12] = state->line_sensors[0];
-    bu16[13] = state->line_sensors[1];
-    bu16[14] = state->line_sensors[2];
+    b16[10] = state->accel[0];
+    b16[11] = state->accel[1];
+    b16[12] = state->accel[2];
+    b16[13] = state->gyro[0];
+    b16[14] = state->gyro[1];
+    b16[15] = state->gyro[2];
 
-    bu16[15] = state->range;
+    b64[4] = state->gyro_int[0];
+    b64[5] = state->gyro_int[1];
+    b64[6] = state->gyro_int[2];
 
-    bu16[16] = state->motor_current_left;
-    bu16[17] = state->motor_current_right;
+    bu16[28] = state->line_sensors[0];
+    bu16[29] = state->line_sensors[1];
+    bu16[30] = state->line_sensors[2];
 
-    bu8[36] = state->pwm_prea;
-    bu8[37] = state->pwm_diva;
-    bu16[19] = state->pwm_prd;
+    bu16[31] = state->range;
 
-    bu8[40] = state->flags;
+    bu16[32] = state->motor_current_left;
+    bu16[33] = state->motor_current_right;
+
+    bu8[68] = state->pwm_prea;
+    bu8[69] = state->pwm_diva;
+    bu16[35] = state->pwm_prd;
+
+    bu8[72] = state->flags;
 
     return;
 }
 
 void deserialize_state(void* buf, state_t* state)
 {
+    int64_t*  b64  = (int64_t*)  buf;
     int32_t*  b32  = (int32_t*)  buf;
     int16_t*  b16  = (int16_t*)  buf;
     uint16_t* bu16 = (uint16_t*) buf;
     uint8_t*  bu8  = (uint8_t*)  buf;
 
-    state->encoder_left_ticks = b32[0];
-    state->encoder_right_ticks = b32[1];
+    state->utime = b64[0];
 
-    state->motor_left_speed_cmd  = b16[4];
-    state->motor_right_speed_cmd = b16[5];
+    state->encoder_left_ticks = b32[2];
+    state->encoder_right_ticks = b32[3];
 
-    state->accel[0] = b16[6];
-    state->accel[1] = b16[7];
-    state->accel[2] = b16[8];
-    state->gyro[0]  = b16[9];
-    state->gyro[1]  = b16[10];
-    state->gyro[2]  = b16[11];
+    state->motor_left_speed_cmd  = b16[8];
+    state->motor_right_speed_cmd = b16[9];
 
-    state->line_sensors[0] = bu16[12];
-    state->line_sensors[1] = bu16[13];
-    state->line_sensors[2] = bu16[14];
+    state->accel[0] = b16[10];
+    state->accel[1] = b16[11];
+    state->accel[2] = b16[12];
+    state->gyro[0]  = b16[13];
+    state->gyro[1]  = b16[14];
+    state->gyro[2]  = b16[15];
 
-    state->range = bu16[15];
+    state->gyro_int[0] = b64[4];
+    state->gyro_int[1] = b64[5];
+    state->gyro_int[2] = b64[6];
 
-    state->motor_current_left = bu16[16];
-    state->motor_current_right = bu16[17];
+    state->line_sensors[0] = bu16[28];
+    state->line_sensors[1] = bu16[29];
+    state->line_sensors[2] = bu16[30];
 
-    state->pwm_prea = bu8[36];
-    state->pwm_diva = bu8[37];
-    state->pwm_prd = bu16[19];
+    state->range = bu16[31];
 
-    state->flags = bu8[40];
+    state->motor_current_left = bu16[32];
+    state->motor_current_right = bu16[33];
+
+    state->pwm_prea = bu8[68];
+    state->pwm_diva = bu8[69];
+    state->pwm_prd = bu16[35];
+
+    state->flags = bu8[72];
 
     return;
 }
