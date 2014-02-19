@@ -93,7 +93,7 @@ void deserialize_state(void* buf, state_t* state)
 
 void serialize_command(command_t* command, void* buf)
 {
-    uint16_t*  bu16  = (uint16_t*)  buf;
+    int16_t*  bu16  = (int16_t*)  buf;
     uint8_t*  bu8  = (uint8_t*)  buf;
 
     bu16[0] = command->motor_left_speed;

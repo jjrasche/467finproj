@@ -10,7 +10,7 @@ all: | lcmtypes $(LCMTYPES_C)
 
 lcmtypes/%.c: ../lcmtypes/%.lcm
 	@echo "\t$<"
-	@$(LCM) -c --c-cpath lcmtypes --c-hpath lcmtypes $<
+	@$(LCM) -c --c-typeinfo --c-cpath lcmtypes --c-hpath lcmtypes $<
 
 lcmtypes:
 	mkdir -p lcmtypes
