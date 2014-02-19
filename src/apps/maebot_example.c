@@ -18,14 +18,14 @@
 #include "imagesource/image_source.h"
 #include "imagesource/image_convert.h"
 
-#include "lcmtypes/maebot_command_t.h"
+#include "lcmtypes/maebot_diff_drive_t.h"
 #include "lcmtypes/maebot_laser_t.h"
 #include "lcmtypes/maebot_leds_t.h"
 #include "lcmtypes/maebot_sensor_data_t.h"
 #include "lcmtypes/maebot_motor_feedback_t.h"
 
-#define MAX_REVERSE_SPEED = -1.0f
-#define MAX_FORWARD_SPEED = 1.0f
+#define MAX_REVERSE_SPEED -1.0f
+#define MAX_FORWARD_SPEED 1.0f
 
 #define dmax(A,B) A < B ? B : A
 #define dmin(A,B) A < B ? A : B
@@ -39,7 +39,7 @@ struct state
     double joy_bounds;
     double last_click[3];
 
-    maebot_command_t cmd;
+    maebot_diff_drive_t cmd;
     pthread_mutex_t cmd_mutex;
     pthread_t cmd_thread;
     pthread_mutex_t render_mutex;
@@ -155,16 +155,65 @@ static void* send_cmds(void *data)
 
     while (state->running) {
         pthread_mutex_lock(&state->cmd_mutex);
-        matd_t *n = matd_create_data(3, 1, state->last_click);
-        double mag = matd_vec_mag(n);
+        matd_t *click = matd_create_data(3, 1, state->last_click);
+        double mag = matd_vec_mag(click);
+        matd_t *n = click;
         if (mag != 0) {
-            n = matd_vec_normalize(n);
+            n = matd_vec_normalize(click);  // Leaks memory
         }
+        double len = dmin(mag, state->joy_bounds);
 
         // Map vector direction to motor command.
-        // XXX
+        state->cmd.utime = utime_now();
 
-        matd_destroy(n);
+        int sign_x = matd_get(n, 0, 0) > 0; // > 0 if positive
+        int sign_y = matd_get(n, 1, 0) > 0; // > 0 if positive
+        float magx = fabs(matd_get(n, 0, 0));
+        float magy = fabs(matd_get(n, 1, 0));
+        float scale = 1.0f*len/state->joy_bounds;
+
+        // Quadrant check
+        if (sign_y && sign_x) {
+            // Quad I
+            state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale;
+            if (magx > magy) {
+                state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*(magx-magy)/magx;
+            } else {
+                state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*(magy-magx)/magy;
+            }
+        } else if (sign_y && !sign_x) {
+            // Quad II
+            state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale;
+            if (magx > magy) {
+                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*(magx-magy)/magx;
+            } else {
+                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*(magy-magx)/magy;
+            }
+        } else if (!sign_y && !sign_x) {
+            // Quad III
+            state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale;
+            if (magx > magy) {
+                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*(magx-magy)/magx;
+            } else {
+                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*(magy-magx)/magy;
+            }
+        } else {
+            // Quad IV
+            state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale;
+            if (magx > magy) {
+                state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*(magx-magy)/magx;
+            } else {
+                state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*(magy-magx)/magy;
+            }
+        }
+
+        if (mag != 0) {
+            matd_destroy(n);
+        }
+        matd_destroy(click);
+
+        // Publish
+        maebot_diff_drive_t_publish(state->lcm, "MAEBOT_DIFF_DRIVE", &(state->cmd));
 
         pthread_mutex_unlock(&state->cmd_mutex);
 
@@ -201,10 +250,11 @@ static void* render_loop(void *data)
         // Scale click line
         pthread_mutex_lock(&state->cmd_mutex);
 
-        matd_t *n = matd_create_data(3, 1, state->last_click);
-        double mag = matd_vec_mag(n);
+        matd_t *click = matd_create_data(3, 1, state->last_click);
+        double mag = matd_vec_mag(click);
+        matd_t *n = click;
         if (mag != 0) {
-            n = matd_vec_normalize(n);
+            n = matd_vec_normalize(click);
         }
         double len = dmin(mag, state->joy_bounds);
 
@@ -212,7 +262,10 @@ static void* render_loop(void *data)
         line[4] = (float)len*matd_get(n, 1, 0);
         line[5] = (float)len*matd_get(n, 2, 0);
 
-        matd_destroy(n);
+        if (mag != 0) {
+            matd_destroy(n);
+        }
+        matd_destroy(click);
 
         vx_buffer_add_back(vx_world_get_buffer(state->vw, "direction"),
                            vxo_lines(vx_resc_copyf(line, 6),
