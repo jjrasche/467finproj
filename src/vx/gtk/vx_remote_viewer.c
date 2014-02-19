@@ -1,8 +1,15 @@
 #include <gtk/gtk.h>
+#include <errno.h>
 #include <pthread.h>
 #include <endian.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "common/ssocket.h"
 #include "common/ioutils.h"
@@ -13,6 +20,8 @@
 #include "vx/vx_global.h"
 #include "vx/vx_code_output_stream.h"
 #include "vx/vx_display.h"
+#include "vx/vx_util.h"
+#include "vx/vx_remote_display_source.h"
 
 #include "vx/vx_tcp_display.h" // Constants
 #include "vx/vx_tcp_util.h"
@@ -37,6 +46,114 @@ typedef struct
 
     pthread_t listen_thread;
 } state_t;
+
+
+typedef struct
+{
+
+    char * ip;
+    char * name;
+    int port;
+
+} remote_rec_t;
+
+
+static void remote_rec_destroy(remote_rec_t * r)
+{
+    free(r->ip);
+    free(r->name);
+    free(r);
+}
+
+
+/** make and bind a udp socket to port. Returns the fd. **/
+static int udp_socket_create(int port)
+{
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0)
+        return -1;
+
+    struct sockaddr_in listen_addr;
+    memset(&listen_addr, 0, sizeof(struct sockaddr_in));
+    listen_addr.sin_family = AF_INET;
+    listen_addr.sin_port = htons(port);
+    listen_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    int res = bind(sock, (struct sockaddr*) &listen_addr, sizeof(struct sockaddr_in));
+    if (res < 0)
+        return -2;
+
+    return sock;
+}
+
+static zarray_t *  active_remote_apps(double time)
+{
+    zarray_t * active_apps = zarray_create(sizeof(remote_rec_t*));
+
+    int sock = udp_socket_create(DEFAULT_VX_AD_PORT);
+
+    if (sock < 0)
+        return active_apps;
+
+    uint64_t end_mtime = vx_mtime() + (int)(1000*time);
+
+    while (vx_mtime() < end_mtime) {
+
+        uint8_t data[512];
+
+        struct sockaddr_in src_addr;
+        socklen_t len = sizeof(src_addr);
+
+        int res = recvfrom(sock, data, 512, MSG_DONTWAIT,
+                           (struct sockaddr *)&src_addr, &len);
+
+        if (res < 0 && errno == EAGAIN) {
+            usleep(10000);
+            continue;
+        }
+
+        vx_code_input_stream_t * couts = vx_code_input_stream_create(data, res);
+
+        int magic = couts->read_uint32(couts);
+        int cxn_port = couts->read_uint32(couts);
+        const char * name = couts->read_str(couts);
+
+        if (magic == VX_AD_MAGIC) {
+            remote_rec_t *rec = calloc(1, sizeof(remote_rec_t));
+            rec->ip = strdup(inet_ntoa(src_addr.sin_addr));
+            rec->name = strdup(name);
+            rec->port = cxn_port;
+
+            // check to see if this already exists
+
+            int found = 0;
+
+            for (int i = 0; i < zarray_size(active_apps); i++) {
+                remote_rec_t * other = NULL;
+                zarray_get(active_apps, i, & other);
+                if (strcmp(other->ip, rec->ip) == 0 &&
+                    other->port == rec->port) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found) {
+                zarray_add(active_apps, &rec);
+            } else {
+                remote_rec_destroy(rec);
+            }
+        }
+
+        vx_code_input_stream_destroy(couts);
+    }
+
+    // remote duplicates
+
+    close(sock);
+
+    return active_apps;
+}
 
 
 void * listen_run(void * usr)
@@ -204,8 +321,9 @@ int main(int argc, char ** argv)
 
     getopt_t * gopt = getopt_create();
     getopt_add_bool   (gopt, 'h', "help", 0, "Show help");
-    getopt_add_string (gopt, 'a', "ip-address", "localhost", "Hostname to connect to");
+    getopt_add_string (gopt, 'a', "ip-address", "localhost", "Hostname to connect to.");
     getopt_add_int    (gopt, 'p', "port", "15151", "Port to connect to");
+    getopt_add_bool   (gopt, 'l', "list", 0, "List active remote applications and exit");
 
     // parse and print help
     if (!getopt_parse(gopt, argc, argv, 1) || getopt_get_bool(gopt,"help")) {
@@ -229,10 +347,30 @@ int main(int argc, char ** argv)
     state->display_listener.event_dispatch_touch = event_dispatch_touch;
     state->display_listener.impl = state;
 
-
     // XXX hardcoded
     state->ip = getopt_get_string(gopt, "ip-address");
     state->port = getopt_get_int(gopt, "port");
+
+    if (getopt_get_bool(gopt, "list")) {
+
+        printf("Searching for remote applications...");
+        fflush(stdout);
+
+        zarray_t * active_apps = active_remote_apps(1.5);
+        printf(" found %d:\n", zarray_size(active_apps));
+
+        for (int  i =0; i < zarray_size(active_apps); i++) {
+            remote_rec_t * rec = NULL;
+            zarray_get(active_apps, i, &rec);
+            printf("  Name=\"%s\": -a %s -p %d\n",
+                   rec->name, rec->ip, rec->port);
+        }
+
+        zarray_vmap(active_apps, remote_rec_destroy);
+        zarray_destroy(active_apps);
+
+        return 0;
+    }
 
     gdk_threads_init ();
     gdk_threads_enter ();

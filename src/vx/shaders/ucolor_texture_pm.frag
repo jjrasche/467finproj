@@ -1,4 +1,3 @@
-#version 120
 
 varying  vec2 vtexcoord;
 uniform sampler2D texture;
