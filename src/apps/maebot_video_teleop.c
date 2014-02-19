@@ -18,9 +18,8 @@
 
 #include "lcmtypes/maebot_diff_drive_t.h"
 
-// XXX these need to be fixed based on actual spec
-#define MAX_REVERSE_SPEED -32768
-#define MAX_FORWARD_SPEED 32767
+#define MAX_REVERSE_SPEED -1.0f
+#define MAX_FORWARD_SPEED 1.0f
 
 typedef struct
 {
