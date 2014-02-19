@@ -170,6 +170,8 @@ static void* send_cmds(void *data)
         int sign_y = matd_get(n, 1, 0) > 0; // > 0 if positive
         float magx = fabs(matd_get(n, 0, 0));
         float magy = fabs(matd_get(n, 1, 0));
+        float x2y = magx > 0 ? (magx-magy)/magx : 0.0f;
+        float y2x = magy > 0 ? (magy-magx)/magy : 0.0f;
         float scale = 1.0f*len/state->joy_bounds;
 
         // Quadrant check
@@ -177,33 +179,33 @@ static void* send_cmds(void *data)
             // Quad I
             state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale;
             if (magx > magy) {
-                state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*(magx-magy)/magx;
+                state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*x2y;
             } else {
-                state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*(magy-magx)/magy;
+                state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*y2x;
             }
         } else if (sign_y && !sign_x) {
             // Quad II
             state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale;
             if (magx > magy) {
-                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*(magx-magy)/magx;
+                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*x2y;
             } else {
-                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*(magy-magx)/magy;
+                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*y2x;
             }
         } else if (!sign_y && !sign_x) {
             // Quad III
             state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale;
             if (magx > magy) {
-                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*(magx-magy)/magx;
+                state->cmd.motor_left_speed = MAX_FORWARD_SPEED*scale*x2y;
             } else {
-                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*(magy-magx)/magy;
+                state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale*y2x;
             }
         } else {
             // Quad IV
             state->cmd.motor_left_speed = MAX_REVERSE_SPEED*scale;
             if (magx > magy) {
-                state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*(magx-magy)/magx;
+                state->cmd.motor_right_speed = MAX_FORWARD_SPEED*scale*x2y;
             } else {
-                state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*(magy-magx)/magy;
+                state->cmd.motor_right_speed = MAX_REVERSE_SPEED*scale*y2x;
             }
         }
 
