@@ -39,13 +39,17 @@ typedef struct state
   unsigned int power_button_pressed    : 1;
   unsigned int motor_left_reverse_cmd  : 1;
   unsigned int motor_right_reverse_cmd : 1;
-  unsigned int extra                   : 5;
+  unsigned int motor_left_coast_cmd    : 1;
+  unsigned int motor_right_coast_cmd   : 1;
+  unsigned int extra                   : 3;
 */
 } state_t;
 
-#define flags_power_button_mask (1 << 0)
-#define flags_motor_left_reverse_cmd_mask (1 << 1)
+#define flags_power_button_mask            (1 << 0)
+#define flags_motor_left_reverse_cmd_mask  (1 << 1)
 #define flags_motor_right_reverse_cmd_mask (1 << 2)
+#define flags_motor_left_coast_cmd_mask    (1 << 3)
+#define flags_motor_right_coast_cmd_mask   (1 << 4)
 
 void serialize_state(state_t* state, void* buf);
 void deserialize_state(void* buf, state_t* state);
@@ -70,7 +74,8 @@ typedef struct command
     unsigned int led_middle_power      : 1;
     unsigned int led_right_power       : 1;
     unsigned int line_sensor_led_power : 1;
-    unsigned int extra                 : 2;
+    unsigned int motor_left_coast      : 1;
+    unsigned int motor_right_coast     : 1;
 */
 } command_t;
 
@@ -81,6 +86,8 @@ typedef struct command
 #define flags_led_middle_power_mask      (1 << 3)
 #define flags_led_right_power_mask       (1 << 4)
 #define flags_line_sensor_led_power_mask (1 << 5)
+#define flags_motor_left_coast_mask      (1 << 6)
+#define flags_motor_right_coast_mask     (1 << 7)
 
 void serialize_command(command_t* command, void* buf);
 void deserialize_command(void* buf, command_t* command);
