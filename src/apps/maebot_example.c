@@ -100,9 +100,9 @@ static int mouse_event (vx_event_handler_t * vh, vx_layer_t * vl, vx_camera_pos_
 
     // Button state
     int m1 = mouse->button_mask & VX_BUTTON1_MASK;
-    int alt = mouse->modifiers & VX_ALT_MASK;
+//    int alt = mouse->modifiers & VX_ALT_MASK;
     int ctrl = mouse->modifiers & VX_CTRL_MASK;
-    int shift = mouse->modifiers & VX_SHIFT_MASK;
+//    int shift = mouse->modifiers & VX_SHIFT_MASK;
 
     pthread_mutex_lock(&state->cmd_mutex);
 
@@ -134,6 +134,7 @@ static void nodestroy (vx_event_handler_t * vh)
 
 static state_t *global_state;
 // XXX This is not working correctly right now
+/*
 static void handler(int signum)
 {
     switch (signum)
@@ -146,6 +147,7 @@ static void handler(int signum)
             break;
     }
 }
+*/
 
 // This thread continuously publishes command messages to the maebot
 static void* send_cmds(void *data)
