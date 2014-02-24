@@ -377,7 +377,7 @@ int main(int argc, char **argv)
     pthread_create(&state->render_thread, NULL, render_loop, state);
 
     // Loop forever
-    while (1) sleep(1);
+    while (1) lcm_handle(state->lcm);
 
     vx_remote_display_source_destroy(remote);
 }
