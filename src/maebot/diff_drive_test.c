@@ -54,7 +54,7 @@ int main()
     msg.motor_right_speed = 0.2f;
     pthread_mutex_unlock(&msg_mutex);
 
-    usleep(250000);
+    usleep(500000);
 
     // reverse
     pthread_mutex_lock(&msg_mutex);
@@ -62,7 +62,7 @@ int main()
     msg.motor_right_speed = -0.2f;
     pthread_mutex_unlock(&msg_mutex);
 
-    usleep(250000);
+    usleep(500000);
 
     // left turn
     pthread_mutex_lock(&msg_mutex);
@@ -70,7 +70,7 @@ int main()
     msg.motor_right_speed = 0.2f;
     pthread_mutex_unlock(&msg_mutex);
 
-    usleep(250000);
+    usleep(500000);
 
     // right turn
     pthread_mutex_lock(&msg_mutex);
@@ -78,7 +78,7 @@ int main()
     msg.motor_right_speed = -0.2f;
     pthread_mutex_unlock(&msg_mutex);
 
-    usleep(250000);
+    usleep(500000);
 
     // stop
     pthread_mutex_lock(&msg_mutex);
