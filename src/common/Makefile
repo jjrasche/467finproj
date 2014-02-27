@@ -10,7 +10,8 @@ COMMON_OBJS = getopt.o gps_linearize.o ioutils.o math_util.o \
 	      image_u8.o image_u8x3.o image_u32.o pnm.o \
 	      image_util.o\
 	      pg.o param_widget.o	\
-	      dynamixel_bus.o dynamixel_serial_bus.o dynamixel_device.o dynamixel_axseries.o dynamixel_mxseries.o
+	      dynamixel_bus.o dynamixel_serial_bus.o dynamixel_device.o dynamixel_axseries.o dynamixel_mxseries.o \
+		homography.o
 
 LIBCOMMON=$(LIB_PATH)/libcommon.a
 
