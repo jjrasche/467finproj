@@ -86,5 +86,7 @@ int main()
     msg.motor_right_speed = 0.0f;
     pthread_mutex_unlock(&msg_mutex);
 
+    usleep(100000);
+
     return 0;
 }
