@@ -7,7 +7,7 @@ lcm_t* lcm;
 static void
 sensor_data_handler(const lcm_recv_buf_t* rbuf, const char* channel, const maebot_sensor_data_t* msg, void* user)
 {
-    //system("clear");
+    system("clear");
     printf("Subscribed to channel: MAEBOT_SENSOR_DATA\n");
     printf("utime: %lld\n", msg->utime);
     printf("accel[0, 1, 2]: %d,/t%d,/t%d\n", msg->accel[0], msg->accel[1], msg->accel[2]);
