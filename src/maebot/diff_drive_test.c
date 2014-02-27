@@ -7,6 +7,7 @@
 
 #define CMD_PRD 50000 //us  -> 20Hz
 #define MTR_SPD 0.25f
+#define MTR_STOP 0.0f
 
 lcm_t* lcm;
 maebot_diff_drive_t msg;
@@ -42,8 +43,8 @@ int main()
 
     // Init msg
     // no need for mutex here, as command thread hasn't started yet.
-    msg.motor_left_speed = 0.0f;
-    msg.motor_right_speed = 0.0f;
+    msg.motor_left_speed = MTR_STOP;
+    msg.motor_right_speed = MTR_STOP;
 
     // Start sending motor commands
     pthread_t diff_drive_thread_pid;
@@ -83,8 +84,8 @@ int main()
 
     // stop
     pthread_mutex_lock(&msg_mutex);
-    msg.motor_left_speed  = 0.0f;
-    msg.motor_right_speed = 0.0f;
+    msg.motor_left_speed  = MTR_STOP;
+    msg.motor_right_speed = MTR_STOP;
     pthread_mutex_unlock(&msg_mutex);
 
     usleep(100000);

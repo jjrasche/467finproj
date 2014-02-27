@@ -3,3 +3,4 @@ laser_test
 led_test
 motor_feedback_test
 diff_drive_test
+sensor_data_test
