@@ -8,7 +8,7 @@ static void
 sensor_data_handler(const lcm_recv_buf_t* rbuf, const char* channel, const maebot_sensor_data_t* msg, void* user)
 {
     system("clear");
-    printf("utime: %ld\n", msg->utime);
+    printf("utime: %lld\n", msg->utime);
     printf("accel[0, 1, 2]: %d, %d, %d\n", msg->accel[0], msg->accel[1], msg->accel[2]);
     printf("gyro[0, 1, 2]: %d, %d, %d\n", msg->gyro[0], msg->gyro[1], msg->gyro[2]);
     printf("gyro_int[0, 1, 2]: %lld, %lld, %lld\n", msg->gyro_int[0], msg->gyro_int[1], msg->gyro_int[2]);
