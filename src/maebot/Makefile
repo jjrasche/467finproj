@@ -10,7 +10,7 @@ MAEBOT_OBJS = types.o
 
 LIBMAEBOT=$(LIB_PATH)/libmaebot.a
 
-all: $(LIBMAEBOT) driver led_test laser_test motor_feedback_test
+all: $(LIBMAEBOT) driver led_test laser_test motor_feedback_test diff_drive_test
 
 
 $(LIBMAEBOT): $(MAEBOT_OBJS)
@@ -33,6 +33,10 @@ motor_feedback_test: motor_feedback_test.c
 	@gcc -o motor_feedback_test motor_feedback_test.c $(LCMTYPES_C) $(LDFLAGS) $(CFLAGS)
 	@cp motor_feedback_test ../../bin/
 
+diff_drive_test: diff_drive_test.c
+	@gcc -o diff_drive_test diff_drive_test.c $(LCMTYPES_C) $(LDFLAGS) $(CFLAGS)
+	@cp diff_drive_test ../../bin/
+
 clean:
 	@rm -f *.o *~ *.a
-	@rm -f maebot_driver maebot_test arm_driver arm_example led_test laser_test motor_feedback_test
+	@rm -f maebot_driver maebot_test arm_driver arm_example led_test laser_test motor_feedback_test diff_drive_test

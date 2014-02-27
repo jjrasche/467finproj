@@ -2,3 +2,4 @@ maebot_driver
 laser_test
 led_test
 motor_feedback_test
+diff_drive_test
