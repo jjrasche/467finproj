@@ -6,6 +6,7 @@
 #include "lcmtypes/maebot_diff_drive_t.h"
 
 #define CMD_PRD 50000 //us  -> 20Hz
+#define MTR_SPD 0.25f
 
 lcm_t* lcm;
 maebot_diff_drive_t msg;
@@ -50,32 +51,32 @@ int main()
 
     // forward
     pthread_mutex_lock(&msg_mutex);
-    msg.motor_left_speed  = 0.2f;
-    msg.motor_right_speed = 0.2f;
+    msg.motor_left_speed  = MTR_SPD;
+    msg.motor_right_speed = MTR_SPD;
     pthread_mutex_unlock(&msg_mutex);
 
     usleep(500000);
 
     // reverse
     pthread_mutex_lock(&msg_mutex);
-    msg.motor_left_speed  = -0.2f;
-    msg.motor_right_speed = -0.2f;
+    msg.motor_left_speed  = -MTR_SPD;
+    msg.motor_right_speed = -MTR_SPD;
     pthread_mutex_unlock(&msg_mutex);
 
     usleep(500000);
 
     // left turn
     pthread_mutex_lock(&msg_mutex);
-    msg.motor_left_speed  = -0.2f;
-    msg.motor_right_speed = 0.2f;
+    msg.motor_left_speed  = -MTR_SPD;
+    msg.motor_right_speed = MTR_SPD;
     pthread_mutex_unlock(&msg_mutex);
 
     usleep(500000);
 
     // right turn
     pthread_mutex_lock(&msg_mutex);
-    msg.motor_left_speed  = 0.2f;
-    msg.motor_right_speed = -0.2f;
+    msg.motor_left_speed  = MTR_SPD;
+    msg.motor_right_speed = -MTR_SPD;
     pthread_mutex_unlock(&msg_mutex);
 
     usleep(500000);
