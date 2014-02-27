@@ -10,8 +10,8 @@ motor_feedback_handler(const lcm_recv_buf_t *rbuf, const char* channel, const ma
     system("clear");
     printf("Subscribed to channed: MAEBOT_MOTOR_FEEDBACK\n");
     printf("utime: %lld\n", msg->utime);
-    printf("encoder_[left, right]_ticks:\t%d,\t%d\n", msg->encoder_left_ticks, msg->encoder_right_ticks);
-    printf("motor_current[left, right]:\t%d,\t%d\n", msg->motor_current_left, msg->motor_current_right);
+    printf("encoder_[left, right]_ticks:\t\t%d,\t%d\n", msg->encoder_left_ticks, msg->encoder_right_ticks);
+    printf("motor_current[left, right]:\t\t%d,\t%d\n", msg->motor_current_left, msg->motor_current_right);
     printf("motor_[left, right]_commanded_speed:\t%f,\t%f\n", msg->motor_left_commanded_speed, msg->motor_right_commanded_speed);
     printf("motor_[left, right]_actual_speed:\t%f,\t%f\n", msg->motor_left_commanded_speed, msg->motor_right_commanded_speed);
 }
