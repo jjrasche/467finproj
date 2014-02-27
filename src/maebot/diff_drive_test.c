@@ -31,6 +31,8 @@ void* diff_drive_thread(void* arg)
 
 int main()
 {
+    lcm = lcm_create(NULL);
+
     if(pthread_mutex_init(&msg_mutex, NULL))
     {
         printf("mutex init failed\n");
