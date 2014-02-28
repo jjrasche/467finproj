@@ -5,6 +5,7 @@
 #include "vx_object.h"
 
 #include "common/image_u32.h"
+#include "common/image_u8.h"
 
 // Can pass some flags to change the way the image is rendered
 #define VXO_IMAGE_NOFLAGS 0
@@ -29,10 +30,12 @@ extern "C" {
 // or (r<<24)+(g<<16)+(b<<8)+(a<<0) on big endian machines.
     vx_object_t * vxo_image_from_u32(image_u32_t *im, int img_flags, int tex_flags);
 
-vx_object_t *vxo_image(vx_resc_t * tex, int width, int height, int pixel_format, int img_flags);
+    vx_object_t * vxo_image_from_u8(image_u8_t *im, int img_flags, int tex_flags);
 
-vx_object_t * vxo_image_texflags(vx_resc_t * tex, int width, int height,
-                                 int format, int img_flags, int tex_flags);
+    vx_object_t *vxo_image(vx_resc_t * tex, int width, int height, int stride, int pixel_format, int img_flags);
+
+    vx_object_t * vxo_image_texflags(vx_resc_t * tex, int width, int height, int stride,
+                                     int format, int img_flags, int tex_flags);
 
 #ifdef __cplusplus
 }

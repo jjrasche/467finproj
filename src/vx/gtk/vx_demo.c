@@ -117,7 +117,7 @@ static void draw(state_t * state, vx_world_t * world)
     if (state->img != NULL){
         image_u32_t * img = state->img;
         vx_object_t * o3 = vxo_image_texflags(vx_resc_copyui(img->buf, img->stride*img->height),
-                                              img->stride, img->height,
+                                              img->width, img->height, img->stride,
                                               GL_RGBA, VXO_IMAGE_FLIPY,
                                               VX_TEX_MIN_FILTER | VX_TEX_MAG_FILTER);
         // pack the image into the unit square

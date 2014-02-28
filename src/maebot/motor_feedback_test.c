@@ -1,4 +1,4 @@
-
+#include <inttypes.h>
 #include <lcm/lcm.h>
 #include "lcmtypes/maebot_motor_feedback_t.h"
 
