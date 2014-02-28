@@ -474,6 +474,22 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 #define I2C_DEVICE_PATH "/dev/i2c-3"
 #define LED_ADDRESS 0x4D
 
+
+
+typedef struct leds_driver
+{
+    maebot_leds_t leds;
+
+    uint8_t rgb_led_left_dirty;
+    uint8_t rgb_led_right_dirty;
+    uint8_t sama5_leds_dirty;
+
+    pthread_cond_t dirty_cond;
+    ptrhead_mutex_t dirty_mutex;
+    pthread_mutex_t data_mutex;
+
+} leds_driver_t;
+
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
              const maebot_leds_t* msg, void* user)
@@ -489,11 +505,109 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 
     sama5_send_command();
 
-    int fd;
-    fd = open(I2C_DEVICE_PATH, O_RDWR);
-    if (ioctl(fd, I2C_SLAVE, LED_ADDRESS) < 0) {
-        printf("Failed to set slave address: %m\n");
+    leds_uptdate(...);
+    if(leds_dirty(...))
+    {
+        pthread_cond_broadcast(...);
     }
+
+
+}
+
+void* leds_thread(void* arg)
+{
+    while(1)
+    {
+        if(leds_dirty(...))
+        {
+            leds_write(...);
+        }
+        else
+        {
+            pthread_cond_wait(...);
+        }
+    }
+
+    return NULL;
+}
+
+
+void leds_update(leds_driver_t* leds_d, maebot_leds_t* leds)
+{
+    pthread_mutex_lock(&leds_d->data_mutex);
+
+    // update left rgb led
+    if(leds_d->leds.top_rgb_led_left != leds->top_rgb_leds_left)
+    {
+        leds_d->rgb_left_dirty = 1;
+    }
+    leds_d->leds.top_rgb_led_left = leds->top_rgb_leds_left;
+
+    // update right rgb led
+    if(leds_d->leds.top_rgb_led_right != leds->top_rgb_leds_right)
+    {
+        leds_d->rgb_right_dirty = 1;
+    }
+    leds_d->leds.top_rgb_led_right = leds->top_rgb_leds_right;
+
+    // update left sama5 led
+    if(leds_d->leds.bottom_led_left != leds->bottom_led_left)
+    {
+        leds_d->sama5_leds_dirty = 1;
+    }
+    leds_d->leds.bottom_led_left = leds->bottom_led_left;
+
+    // update middle sama5 led
+    if(leds_d->leds.bottom_led_middle != leds->bottom_led_middle)
+    {
+        leds_d->sama5_leds_dirty = 1;
+    }
+    leds_d->leds.bottom_led_middle = leds->bottom_led_middle;
+
+    // update right sama5 led
+    if(leds_d->leds.bottom_led_right != leds->bottom_led_right)
+    {
+        leds_d->sama5_leds_dirty = 1;
+    }
+    leds_d->leds.bottom_led_right = leds->bottom_led_right;
+
+    // update line_sensor leds
+    if(leds_d->leds.line_sensor_leds != leds->line_sensor_leds)
+    {
+        leds_d->sama5_leds_dirty = 1;
+    }
+    leds_d->leds.line_sensor_leds = leds->line_sensor_leds;
+
+    pthread_mutex_unlock(&leds_d->data_mutex);
+}
+
+uint8_t leds_dirty(leds_driver_t* leds_d)
+{
+    pthread_mutex_lock(&leds_d->data_mutex);
+    uint8_t dirty = leds_d->rgb_led_left_dirty ||
+        leds_d->rgb_led_right_dirty ||
+        leds_d->sama5_leds_dirty;
+    pthread_mutex_unlock(&leds_d->data_mutex);
+
+    return dirty;
+}
+
+void leds_write(leds_driver_t* leds_d)
+{
+    pthread_mutex_lock(&leds_d->data_mutex);
+
+    if(leds_d->sama5_leds_dirty)
+    {
+        pthread_mutex_lock(&statelock);
+        // copy into shared state;
+        shared_state.leds = leds_d->leds;
+        pthread_mutex_unlock(&statelock);
+
+        pthread_mutex_unlock(&leds_d->data_mutex);
+        sama5_send_command();
+        pthread_mutex_lock(&leds_d->data_mutex);
+    }
+
 
     uint8_t cmd[6];
     cmd[0] = (1 << 5) | ((msg->top_rgb_led_right >> (16 + 3)) & 0x1F);
@@ -503,6 +617,12 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     cmd[4] = (5 << 5) | ((msg->top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
     cmd[5] = (6 << 5) | ((msg->top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
 
+    int fd;
+    fd = open(I2C_DEVICE_PATH, O_RDWR);
+    if (ioctl(fd, I2C_SLAVE, LED_ADDRESS) < 0) {
+        printf("Failed to set slave address: %m\n");
+    }
+
     int i;
     for(i = 0; i < 6; i++)
     {
@@ -511,4 +631,6 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     }
 
     close(fd);
+
+
 }
