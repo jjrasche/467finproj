@@ -322,6 +322,11 @@ void uc5(const uint8_t *_in, int _inlen, uint8_t *_out, int *_outlen)
     struct uc5_state _state;
     struct uc5_state *state = &_state;
 
+    if (uc5_length(_in, _inlen) == 0) {
+        *_outlen = 0;
+        return;
+    }
+
     state->in = _in;
     state->inlen = _inlen;
     state->inpos = 4;
@@ -639,3 +644,144 @@ void c5(const uint8_t *_in, int _inlen, uint8_t *_out, int *_outlen)
     c5_bit_flush(state);
 }
 
+#ifdef _C5_MAIN
+
+#include "c5.h"
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int main(int argc, char *argv[])
+{
+    int selftest = 0;
+
+    for (int i = 1; i < argc; i++) {
+
+        if (!strcmp("-t", argv[i])) {
+            selftest = 1;
+            continue;
+        }
+
+        uint8_t *inbuf;
+        int inlen;
+
+        if (1) {
+            struct stat s;
+            memset(&s, 0, sizeof(s));
+            if (stat(argv[i], &s)) {
+                perror(argv[i]);
+                continue;
+            }
+
+            if (!(S_ISREG(s.st_mode))) {
+                printf("Skipping %s\n", argv[i]);
+                continue;
+            }
+
+            FILE *f = fopen(argv[i], "rb");
+            if (f == NULL) {
+                perror(argv[i]);
+                continue;
+            }
+
+            fseek(f, 0, SEEK_END);
+            inlen = (int) ftell(f);
+            fseek(f, 0, SEEK_SET);
+
+            inbuf = calloc(1, inlen + C5_PAD);
+            if (inlen != fread(inbuf, 1, inlen, f)) {
+                printf("read failed\n");
+                return -1;
+            }
+
+            fclose(f);
+        }
+
+        if (selftest) {
+            int outalloc = inlen * 1.1 + 16;
+            uint8_t *outbuf = calloc(1, outalloc + C5_PAD);
+            int outlen;
+            c5(inbuf, inlen, outbuf, &outlen);
+            assert(outlen <= outalloc);
+
+            int outlen2 = uc5_length(outbuf, outlen);
+            uint8_t *outbuf2 = calloc(1, outlen2 + C5_PAD);
+            uc5(outbuf, outlen, outbuf2, &outlen2);
+
+            int error = (outlen2 != inlen) || memcmp(inbuf, outbuf2, inlen);
+            printf("Testing %s [%d ==> %d] %s\n", argv[i], inlen, outlen, error ? "FAIL" : "OKAY");
+            if (error)
+                exit(-1);
+
+            free(outbuf);
+            free(outbuf2);
+            goto cleanup;
+        }
+
+        int slen = strlen(argv[i]);
+        int uncompress = (slen > 3 && !strcmp(&argv[i][slen-3], ".c5"));
+
+        if (uncompress) {
+            int outlen = uc5_length(inbuf, inlen);
+
+            uint8_t *outbuf = calloc(1, outlen + C5_PAD);
+
+            uc5(inbuf, inlen, outbuf, &outlen);
+
+            char outpath[strlen(argv[i])+5];
+            sprintf(outpath, "%s", argv[i]);
+            outpath[slen-3] = 0;
+
+            FILE *f = fopen(outpath, "wb");
+            if (f == NULL) {
+                perror(outpath);
+                goto cleanup;
+            }
+
+            if (outlen != fwrite(outbuf, 1, outlen, f)) {
+                printf("write failed\n");
+                return -1;
+            }
+
+            fclose(f);
+
+            printf("Uncompressed %s [%d] => %s [%d]\n", argv[i], inlen, outpath, outlen);
+            free(outbuf);
+
+        } else {
+
+            // COMPRESS
+            int outalloc = inlen * 1.1 + 16;
+            uint8_t *outbuf = calloc(1, outalloc + C5_PAD);
+            int outlen;
+            c5(inbuf, inlen, outbuf, &outlen);
+            assert(outlen <= outalloc);
+
+            char outpath[strlen(argv[i])+5];
+            sprintf(outpath, "%s.c5", argv[i]);
+
+            FILE *f = fopen(outpath, "wb");
+            if (f == NULL) {
+                perror(outpath);
+                goto cleanup;
+            }
+
+            if (outlen != fwrite(outbuf, 1, outlen, f)) {
+                printf("write failed\n");
+                return -1;
+            }
+
+            fclose(f);
+
+            printf("Compressed %s [%d] => %s [%d]\n", argv[i], inlen, outpath, outlen);
+            free(outbuf);
+        }
+
+      cleanup:
+        free(inbuf);
+    }
+
+}
+
+#endif

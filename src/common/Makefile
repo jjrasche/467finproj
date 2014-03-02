@@ -15,7 +15,7 @@ COMMON_OBJS = getopt.o gps_linearize.o ioutils.o math_util.o \
 
 LIBCOMMON=$(LIB_PATH)/libcommon.a
 
-all: $(LIBCOMMON)
+all: $(LIBCOMMON) ../../bin/c5
 
 
 $(LIBCOMMON): $(COMMON_OBJS)
@@ -30,6 +30,10 @@ gridmap.o: gridmap.c
 	@echo "\t$@";
 	@$(CC) $(CFLAGS) -msse -c $<
 
+../../bin/c5:
+	@echo "\t$@";
+	@$(CC) -o $@ -O4 -Wall -std=gnu99 -D_C5_MAIN c5.c
+
 clean:
-	@rm -f *.o *~ *.a
+	@rm -f *.o *~ *.a ../../bin/c5
 	@rm -f gu_minheap_tester
