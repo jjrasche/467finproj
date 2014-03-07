@@ -59,6 +59,11 @@ pthread_mutex_t statelock;
 
 maebot_shared_state_t shared_state;
 
+pthread_cond_t leds_write_cond;
+pthread_mutex_t leds_write_cond_mutex;
+
+void* leds_write_thread(void*);
+
 const uint32_t HEADER_BYTES = 12;
 const uint32_t UART_MAGIC_NUMBER = 0xFDFDFDFD;  // Marks Beginning of Message
 
@@ -292,34 +297,34 @@ static uint16_t pwm_prd;
 
 void sama5_send_command()
 {
-  command_t command;
+    command_t command;
 
-  pthread_mutex_lock(&statelock);
+    pthread_mutex_lock(&statelock);
 
-        command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
-        command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
+    command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
+    command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
 
-        command.pwm_prea = pwm_prea;
-        command.pwm_diva = pwm_diva;
-        command.pwm_prd = pwm_prd;
+    command.pwm_prea = pwm_prea;
+    command.pwm_diva = pwm_diva;
+    command.pwm_prd = pwm_prd;
 
-        command.flags = 0;
-        if(shared_state.diff_drive.motor_left_speed < 0)
-            command.flags |= flags_motor_left_reverse_mask;
-        if(shared_state.diff_drive.motor_right_speed < 0)
-            command.flags |= flags_motor_right_reverse_mask;
-        if(shared_state.leds.bottom_led_left)
-            command.flags |= flags_led_left_power_mask;
-        if(shared_state.leds.bottom_led_middle)
-            command.flags |= flags_led_middle_power_mask;
-        if(shared_state.leds.bottom_led_right)
-            command.flags |= flags_led_right_power_mask;
-        if(shared_state.leds.line_sensor_leds)
-            command.flags |= flags_line_sensor_led_power_mask;
+    command.flags = 0;
+    if(shared_state.diff_drive.motor_left_speed < 0)
+        command.flags |= flags_motor_left_reverse_mask;
+    if(shared_state.diff_drive.motor_right_speed < 0)
+        command.flags |= flags_motor_right_reverse_mask;
+    if(shared_state.leds.bottom_led_left)
+        command.flags |= flags_led_left_power_mask;
+    if(shared_state.leds.bottom_led_middle)
+        command.flags |= flags_led_middle_power_mask;
+    if(shared_state.leds.bottom_led_right)
+        command.flags |= flags_led_right_power_mask;
+    if(shared_state.leds.line_sensor_leds)
+        command.flags |= flags_line_sensor_led_power_mask;
 
-        send_command(command, port);
+    send_command(command, port);
 
-        pthread_mutex_unlock(&statelock);
+    pthread_mutex_unlock(&statelock);
 }
 
 static void
@@ -384,21 +389,29 @@ int main()
 	if(!lcm)
 		return 1;
 
-    if(pthread_mutex_init(&statelock, NULL))
-    {
+    if(pthread_mutex_init(&statelock, NULL)) {
         printf("mutex initialization failed\n");
         return 1;
     }
 
 	port = open_port();
-	if(port == -1)
-	{
+	if(port == -1) {
 		printf("error opening port\n");
 		return 1;
 	}
 
 	port = configure_port(port);
 
+    if(pthread_cond_init(&leds_write_cond, NULL)) {
+        printf("condition variable init failed\n");
+        return 1;
+    }
+    if(pthread_mutex_init(&leds_write_cond_mutex, NULL)) {
+        printf("mutex initialization failed\n");
+        return 1;
+    }
+    pthread_t leds_write_thread_pid;
+    pthread_create(&leds_write_thread_pid, NULL, leds_write_thread, NULL);
 
     // Subscribe to LCM Channels
     maebot_diff_drive_t_subscribe(lcm, "MAEBOT_DIFF_DRIVE", &diff_drive_handler, NULL);
@@ -474,148 +487,47 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
 #define I2C_DEVICE_PATH "/dev/i2c-3"
 #define LED_ADDRESS 0x4D
 
-
-
-typedef struct leds_driver
-{
-    maebot_leds_t leds;
-
-    uint8_t rgb_led_left_dirty;
-    uint8_t rgb_led_right_dirty;
-    uint8_t sama5_leds_dirty;
-
-    pthread_cond_t dirty_cond;
-    ptrhead_mutex_t dirty_mutex;
-    pthread_mutex_t data_mutex;
-
-} leds_driver_t;
+void leds_write();
 
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
              const maebot_leds_t* msg, void* user)
 {
     pthread_mutex_lock(&statelock);
-
-    //printf("recieved msg on channel LEDS\n");
-
-    // copy into shared state;
     shared_state.leds = *msg;
-
     pthread_mutex_unlock(&statelock);
 
-    sama5_send_command();
-
-    leds_uptdate(...);
-    if(leds_dirty(...))
-    {
-        pthread_cond_broadcast(...);
-    }
-
-
+    pthread_mutex_lock(&leds_write_cond_mutex);
+    pthread_cond_broadcast(&leds_write_cond);
+    pthread_mutex_unlock(&leds_write_cond_mutex);
 }
 
-void* leds_thread(void* arg)
+void* leds_write_thread(void* arg)
 {
     while(1)
     {
-        if(leds_dirty(...))
-        {
-            leds_write(...);
-        }
-        else
-        {
-            pthread_cond_wait(...);
-        }
+        pthread_mutex_lock(&leds_write_cond_mutex);
+        pthread_cond_wait(&leds_write_cond, &leds_write_cond_mutex);
+        pthread_mutex_unlock(&leds_write_cond_mutex);
+        leds_write();
     }
 
     return NULL;
 }
 
-
-void leds_update(leds_driver_t* leds_d, maebot_leds_t* leds)
+void leds_write()
 {
-    pthread_mutex_lock(&leds_d->data_mutex);
+    sama5_send_command();
 
-    // update left rgb led
-    if(leds_d->leds.top_rgb_led_left != leds->top_rgb_leds_left)
-    {
-        leds_d->rgb_left_dirty = 1;
-    }
-    leds_d->leds.top_rgb_led_left = leds->top_rgb_leds_left;
-
-    // update right rgb led
-    if(leds_d->leds.top_rgb_led_right != leds->top_rgb_leds_right)
-    {
-        leds_d->rgb_right_dirty = 1;
-    }
-    leds_d->leds.top_rgb_led_right = leds->top_rgb_leds_right;
-
-    // update left sama5 led
-    if(leds_d->leds.bottom_led_left != leds->bottom_led_left)
-    {
-        leds_d->sama5_leds_dirty = 1;
-    }
-    leds_d->leds.bottom_led_left = leds->bottom_led_left;
-
-    // update middle sama5 led
-    if(leds_d->leds.bottom_led_middle != leds->bottom_led_middle)
-    {
-        leds_d->sama5_leds_dirty = 1;
-    }
-    leds_d->leds.bottom_led_middle = leds->bottom_led_middle;
-
-    // update right sama5 led
-    if(leds_d->leds.bottom_led_right != leds->bottom_led_right)
-    {
-        leds_d->sama5_leds_dirty = 1;
-    }
-    leds_d->leds.bottom_led_right = leds->bottom_led_right;
-
-    // update line_sensor leds
-    if(leds_d->leds.line_sensor_leds != leds->line_sensor_leds)
-    {
-        leds_d->sama5_leds_dirty = 1;
-    }
-    leds_d->leds.line_sensor_leds = leds->line_sensor_leds;
-
-    pthread_mutex_unlock(&leds_d->data_mutex);
-}
-
-uint8_t leds_dirty(leds_driver_t* leds_d)
-{
-    pthread_mutex_lock(&leds_d->data_mutex);
-    uint8_t dirty = leds_d->rgb_led_left_dirty ||
-        leds_d->rgb_led_right_dirty ||
-        leds_d->sama5_leds_dirty;
-    pthread_mutex_unlock(&leds_d->data_mutex);
-
-    return dirty;
-}
-
-void leds_write(leds_driver_t* leds_d)
-{
-    pthread_mutex_lock(&leds_d->data_mutex);
-
-    if(leds_d->sama5_leds_dirty)
-    {
-        pthread_mutex_lock(&statelock);
-        // copy into shared state;
-        shared_state.leds = leds_d->leds;
-        pthread_mutex_unlock(&statelock);
-
-        pthread_mutex_unlock(&leds_d->data_mutex);
-        sama5_send_command();
-        pthread_mutex_lock(&leds_d->data_mutex);
-    }
-
-
+    pthread_mutex_lock(&statelock);
     uint8_t cmd[6];
-    cmd[0] = (1 << 5) | ((msg->top_rgb_led_right >> (16 + 3)) & 0x1F);
-    cmd[1] = (2 << 5) | ((msg->top_rgb_led_right >> ( 8 + 3)) & 0x1F);
-    cmd[2] = (3 << 5) | ((msg->top_rgb_led_right >> ( 0 + 3)) & 0x1F);
-    cmd[3] = (4 << 5) | ((msg->top_rgb_led_left  >> (16 + 3)) & 0x1F);
-    cmd[4] = (5 << 5) | ((msg->top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
-    cmd[5] = (6 << 5) | ((msg->top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
+    cmd[0] = (1 << 5) | ((shared_state.leds.top_rgb_led_right >> (16 + 3)) & 0x1F);
+    cmd[1] = (2 << 5) | ((shared_state.leds.top_rgb_led_right >> ( 8 + 3)) & 0x1F);
+    cmd[2] = (3 << 5) | ((shared_state.leds.top_rgb_led_right >> ( 0 + 3)) & 0x1F);
+    cmd[3] = (4 << 5) | ((shared_state.leds.top_rgb_led_left  >> (16 + 3)) & 0x1F);
+    cmd[4] = (5 << 5) | ((shared_state.leds.top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
+    cmd[5] = (6 << 5) | ((shared_state.leds.top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
+    pthread_mutex_unlock(&statelock);
 
     int fd;
     fd = open(I2C_DEVICE_PATH, O_RDWR);
