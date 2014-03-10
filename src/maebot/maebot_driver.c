@@ -29,6 +29,11 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 
+
+#define I2C_DEVICE_PATH "/dev/i2c-3"
+#define LED_ADDRESS 0x4D
+
+
 #ifndef max
 	#define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
 #endif
@@ -59,11 +64,17 @@ pthread_mutex_t statelock;
 
 maebot_shared_state_t shared_state;
 
+pthread_cond_t leds_write_cond;
+pthread_mutex_t leds_write_cond_mutex;
+
+void* leds_write_thread(void*);
+
 const uint32_t HEADER_BYTES = 12;
 const uint32_t UART_MAGIC_NUMBER = 0xFDFDFDFD;  // Marks Beginning of Message
 
 lcm_t* lcm;
 int port;
+int i2c_leds_fd;
 
 int send_command(command_t command, int port)
 {
@@ -292,34 +303,34 @@ static uint16_t pwm_prd;
 
 void sama5_send_command()
 {
-  command_t command;
+    command_t command;
 
-  pthread_mutex_lock(&statelock);
+    pthread_mutex_lock(&statelock);
 
-        command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
-        command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
+    command.motor_left_speed = fabs(shared_state.diff_drive.motor_left_speed) * UINT16_MAX;
+    command.motor_right_speed = fabs(shared_state.diff_drive.motor_right_speed) * UINT16_MAX;
 
-        command.pwm_prea = pwm_prea;
-        command.pwm_diva = pwm_diva;
-        command.pwm_prd = pwm_prd;
+    command.pwm_prea = pwm_prea;
+    command.pwm_diva = pwm_diva;
+    command.pwm_prd = pwm_prd;
 
-        command.flags = 0;
-        if(shared_state.diff_drive.motor_left_speed < 0)
-            command.flags |= flags_motor_left_reverse_mask;
-        if(shared_state.diff_drive.motor_right_speed < 0)
-            command.flags |= flags_motor_right_reverse_mask;
-        if(shared_state.leds.bottom_led_left)
-            command.flags |= flags_led_left_power_mask;
-        if(shared_state.leds.bottom_led_middle)
-            command.flags |= flags_led_middle_power_mask;
-        if(shared_state.leds.bottom_led_right)
-            command.flags |= flags_led_right_power_mask;
-        if(shared_state.leds.line_sensor_leds)
-            command.flags |= flags_line_sensor_led_power_mask;
+    command.flags = 0;
+    if(shared_state.diff_drive.motor_left_speed < 0)
+        command.flags |= flags_motor_left_reverse_mask;
+    if(shared_state.diff_drive.motor_right_speed < 0)
+        command.flags |= flags_motor_right_reverse_mask;
+    if(shared_state.leds.bottom_led_left)
+        command.flags |= flags_led_left_power_mask;
+    if(shared_state.leds.bottom_led_middle)
+        command.flags |= flags_led_middle_power_mask;
+    if(shared_state.leds.bottom_led_right)
+        command.flags |= flags_led_right_power_mask;
+    if(shared_state.leds.line_sensor_leds)
+        command.flags |= flags_line_sensor_led_power_mask;
 
-        send_command(command, port);
+    send_command(command, port);
 
-        pthread_mutex_unlock(&statelock);
+    pthread_mutex_unlock(&statelock);
 }
 
 static void
@@ -384,21 +395,31 @@ int main()
 	if(!lcm)
 		return 1;
 
-    if(pthread_mutex_init(&statelock, NULL))
-    {
+    if(pthread_mutex_init(&statelock, NULL)) {
         printf("mutex initialization failed\n");
         return 1;
     }
 
 	port = open_port();
-	if(port == -1)
-	{
+	if(port == -1) {
 		printf("error opening port\n");
 		return 1;
 	}
 
 	port = configure_port(port);
 
+    i2c_leds_fd = open(I2C_DEVICE_PATH, O_RDWR);
+
+    if(pthread_cond_init(&leds_write_cond, NULL)) {
+        printf("condition variable init failed\n");
+        return 1;
+    }
+    if(pthread_mutex_init(&leds_write_cond_mutex, NULL)) {
+        printf("mutex initialization failed\n");
+        return 1;
+    }
+    pthread_t leds_write_thread_pid;
+    pthread_create(&leds_write_thread_pid, NULL, leds_write_thread, NULL);
 
     // Subscribe to LCM Channels
     maebot_diff_drive_t_subscribe(lcm, "MAEBOT_DIFF_DRIVE", &diff_drive_handler, NULL);
@@ -471,37 +492,54 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     }
 }
 
-#define I2C_DEVICE_PATH "/dev/i2c-3"
-#define LED_ADDRESS 0x4D
+
+void leds_write();
 
 static void
 leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
              const maebot_leds_t* msg, void* user)
 {
     pthread_mutex_lock(&statelock);
-
-    //printf("recieved msg on channel LEDS\n");
-
-    // copy into shared state;
     shared_state.leds = *msg;
-
     pthread_mutex_unlock(&statelock);
 
+    pthread_mutex_lock(&leds_write_cond_mutex);
+    pthread_cond_broadcast(&leds_write_cond);
+    pthread_mutex_unlock(&leds_write_cond_mutex);
+}
+
+void* leds_write_thread(void* arg)
+{
+    while(1)
+    {
+        pthread_mutex_lock(&leds_write_cond_mutex);
+        pthread_cond_wait(&leds_write_cond, &leds_write_cond_mutex);
+        pthread_mutex_unlock(&leds_write_cond_mutex);
+        leds_write();
+    }
+
+    return NULL;
+}
+
+void leds_write()
+{
     sama5_send_command();
 
-    int fd;
-    fd = open(I2C_DEVICE_PATH, O_RDWR);
+    pthread_mutex_lock(&statelock);
+    uint8_t cmd[6];
+    cmd[0] = (1 << 5) | ((shared_state.leds.top_rgb_led_right >> (16 + 3)) & 0x1F);
+    cmd[1] = (2 << 5) | ((shared_state.leds.top_rgb_led_right >> ( 8 + 3)) & 0x1F);
+    cmd[2] = (3 << 5) | ((shared_state.leds.top_rgb_led_right >> ( 0 + 3)) & 0x1F);
+    cmd[3] = (4 << 5) | ((shared_state.leds.top_rgb_led_left  >> (16 + 3)) & 0x1F);
+    cmd[4] = (5 << 5) | ((shared_state.leds.top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
+    cmd[5] = (6 << 5) | ((shared_state.leds.top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
+    pthread_mutex_unlock(&statelock);
+
+    int fd = i2c_leds_fd;
+    //fd = open(I2C_DEVICE_PATH, O_RDWR);
     if (ioctl(fd, I2C_SLAVE, LED_ADDRESS) < 0) {
         printf("Failed to set slave address: %m\n");
     }
-
-    uint8_t cmd[6];
-    cmd[0] = (1 << 5) | ((msg->top_rgb_led_right >> (16 + 3)) & 0x1F);
-    cmd[1] = (2 << 5) | ((msg->top_rgb_led_right >> ( 8 + 3)) & 0x1F);
-    cmd[2] = (3 << 5) | ((msg->top_rgb_led_right >> ( 0 + 3)) & 0x1F);
-    cmd[3] = (4 << 5) | ((msg->top_rgb_led_left  >> (16 + 3)) & 0x1F);
-    cmd[4] = (5 << 5) | ((msg->top_rgb_led_left  >> ( 8 + 3)) & 0x1F);
-    cmd[5] = (6 << 5) | ((msg->top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
 
     int i;
     for(i = 0; i < 6; i++)
@@ -510,5 +548,7 @@ leds_handler(const lcm_recv_buf_t *rbuf, const char* channel,
             printf("Failed to write to I2C device: %m\n");
     }
 
-    close(fd);
+    //close(fd);
+
+
 }
