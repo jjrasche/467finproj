@@ -29,6 +29,11 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 
+
+#define I2C_DEVICE_PATH "/dev/i2c-3"
+#define LED_ADDRESS 0x4D
+
+
 #ifndef max
 	#define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
 #endif
@@ -69,6 +74,7 @@ const uint32_t UART_MAGIC_NUMBER = 0xFDFDFDFD;  // Marks Beginning of Message
 
 lcm_t* lcm;
 int port;
+int i2c_leds_fd;
 
 int send_command(command_t command, int port)
 {
@@ -402,6 +408,8 @@ int main()
 
 	port = configure_port(port);
 
+    i2c_leds_fd = open(I2C_DEVICE_PATH, O_RDWR);
+
     if(pthread_cond_init(&leds_write_cond, NULL)) {
         printf("condition variable init failed\n");
         return 1;
@@ -484,8 +492,6 @@ laser_handler(const lcm_recv_buf_t *rbuf, const char* channel,
     }
 }
 
-#define I2C_DEVICE_PATH "/dev/i2c-3"
-#define LED_ADDRESS 0x4D
 
 void leds_write();
 
@@ -529,8 +535,8 @@ void leds_write()
     cmd[5] = (6 << 5) | ((shared_state.leds.top_rgb_led_left  >> ( 0 + 3)) & 0x1F);
     pthread_mutex_unlock(&statelock);
 
-    int fd;
-    fd = open(I2C_DEVICE_PATH, O_RDWR);
+    int fd = i2c_leds_fd;
+    //fd = open(I2C_DEVICE_PATH, O_RDWR);
     if (ioctl(fd, I2C_SLAVE, LED_ADDRESS) < 0) {
         printf("Failed to set slave address: %m\n");
     }
@@ -542,7 +548,7 @@ void leds_write()
             printf("Failed to write to I2C device: %m\n");
     }
 
-    close(fd);
+    //close(fd);
 
 
 }
