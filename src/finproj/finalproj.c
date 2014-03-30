@@ -168,7 +168,7 @@ void* render_loop(void *data)
                     vx_object_t *vim = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, 0);
                     vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
 
-
+                    test_build_line();
 
                     // vx_buffer_add_back(buf, 
                     //                 vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,

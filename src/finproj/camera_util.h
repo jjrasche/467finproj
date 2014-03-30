@@ -25,8 +25,8 @@ struct grad
 typedef struct loc loc_t;
 struct loc
 {
-    int x;
-    int y;
+    double x;
+    double y;
 };
 
 typedef struct g_node g_node_t;
@@ -56,8 +56,15 @@ struct pixel
     loc_t loc;
 };
 
+typedef struct line line_t;
+struct line
+{
+    loc_t start;
+    loc_t end;
+};
 
 
+void test_build_line();
 
 // caller needs to deallocate buf
 void deep_copy_image (image_u32_t* in, image_u32_t* out);

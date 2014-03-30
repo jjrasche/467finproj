@@ -260,7 +260,6 @@ zhash_t* build_gradient_image(image_u32_t* im)
 // connect similar gradient nodes, close to each other
 zhash_t* connect_nodes(image_u32_t* im, double error)
 {
-    
     zhash_t* node_map = build_gradient_image(im);
 
     for(int y = 0; y < (im->height-1); y++) {
@@ -296,11 +295,12 @@ zhash_t* connect_nodes(image_u32_t* im, double error)
 
 // iterate over every node, putting into an arary based on its parent
 // returns zhash of zarray that contain g_node
-zarray_t* form_objects(zhash_t* node_map, image_u32_t* im)
+zhash_t* form_objects(image_u32_t* im, double error)
 {
     // node->parent_id -> zarray_t  (full of nodes)
     zhash_t* obj_hash = zhash_create(sizeof(uint32_t), sizeof(zarray_t*), 
             zhash_uint32_hash, zhash_uint32_equals);
+    zhash_t* node_map = connect_nodes(im, error);
 
     for(int y = 0; y < (im->height-1); y++) {
         for(int x = 0; x < (im->width-1); x++) {
@@ -319,9 +319,79 @@ zarray_t* form_objects(zhash_t* node_map, image_u32_t* im)
             zarray_add(node_arr, &n);
         }
     }
+    zhash_destroy(node_map);
+    return(obj_hash);
 }
 
 
+line_t build_line(zarray_t* node_arr)
+{
+    line_t l = {{-1,-1}, {-1,-1}};
+    int n = zarray_size(node_arr);
+    double Sx=0, Sxx=0, Sxy=0, Sy=0, Syy=0;
+    double m, b;
+
+    for(int i = 0; i < n; i++)
+    {
+        g_node_t* node;
+        zarray_get(node_arr, i, &node);
+        Sx += node->loc.x;
+        Sxx += node->loc.x * node->loc.x;
+        Sxy += node->loc.y * node->loc.x;
+        Sy += node->loc.y;
+        Syy += node->loc.y * node->loc.y;
+    }
+    m = (n*Sxy - Sx*Sy) / (n*Sxx - Sx*Sx);
+    b = (Sy/n) - (m/n)*Sx;
+    printf("slope: %lf,  y_int: %lf", m, b);
+
+    return(l);
+    // find eqn for line 
+}
+
+void test_build_line()
+{
+    double x[15] = {1.47  ,  1.50  ,  1.52  ,  1.55 ,   1.57  ,  1.60    ,1.63 ,   1.65  ,  1.68   , 1.70  ,  1.73  ,  1.75 ,   1.78  ,  1.80  ,  1.83};
+    double y[15] = {52.21  , 53.12 ,  54.48 ,  55.84  , 57.20  , 58.57  , 59.93   ,61.29  , 63.11  , 64.47  , 66.28  , 68.10  , 69.92 ,  72.19  , 74.46};
+    zarray_t* arr = zarray_create(sizeof(g_node_t*));
+    
+    for(int i = 0; i< 15; i++)
+    {
+        g_node_t* tmp = malloc(sizeof(g_node_t));
+        tmp->loc.x = x[i];
+        tmp->loc.y = y[i];
+        zarray_add(arr, &tmp);
+    }
+    line_t l = build_line(arr);
+}
+
 
 // create lines from gradient objects
+// qualify objects, and build line
+zarray_t* form_lines(image_u32_t*im, double error, int min_size)
+{
+    zhash_t* obj_hash = form_objects(im, error);
+    zarray_t* arr_arr = zhash_values(obj_hash);
+    zarray_t* lines = zarray_create(sizeof(line_t));
+
+    // iterate through objects, qualify and form lines
+    for(int i = 0; i < zarray_size(arr_arr); i++)
+    {
+        zarray_t* obj_arr;
+        zarray_get(arr_arr, &i, &obj_arr);
+
+        if(zarray_size(obj_arr) < min_size) {
+            zarray_destroy(obj_arr);
+            continue;
+        }
+
+        line_t l = build_line(obj_arr);
+
+
+
+
+    }
+
+}
+
 
