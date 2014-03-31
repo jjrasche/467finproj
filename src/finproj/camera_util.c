@@ -332,8 +332,10 @@ void convert_to_grad_image(image_u32_t* im, int add)
             zhash_get(node_map, &idx, &tmp);
 
             im->buf[idx] = mag_to_gray(tmp, add);
+            free(tmp);
         }
     }  
+    // zhash_vmap_keys(node_map, free);
     zhash_destroy(node_map);
 }
 
@@ -495,6 +497,8 @@ zarray_t* form_lines(image_u32_t*im, double error, int min_size)
         l.nodes = obj_arr;
         zarray_add(lines, &l);
     }
+    zarray_destroy(arr_arr);
+    zhash_destroy(obj_hash);
     return(lines);
 }
 

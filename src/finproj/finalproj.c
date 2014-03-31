@@ -30,6 +30,7 @@ struct state
     int pic_num;
     int take_image;
     int static_image;
+    int grad_image;
     int brightness;
     int add_lines;
 
@@ -139,6 +140,9 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("add_lines", name)) {
         state->add_lines = pg_gb(pg,name);
     }   
+    if (!strcmp("grad_image", name)) {
+        state->grad_image = pg_gb(pg,name);
+    }   
 
     pthread_mutex_unlock(&mutex);
 }
@@ -190,9 +194,12 @@ void* render_loop(void *data)
                     int brightness = state->brightness;
                     int add_lines = state->add_lines;
                     int take_pic = state->take_image;
+                    int set_grad_image = state->grad_image;
                     pthread_mutex_unlock(&mutex);
 
-                    // convert_to_grad_image(im, brightness);
+                    if(set_grad_image == 1) {              
+                        convert_to_grad_image(im, brightness);
+                    }
 
                     vx_object_t *vim = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, 0);
                     vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
@@ -228,6 +235,8 @@ void* render_loop(void *data)
                                                     vxo_circle(vxo_mesh_style(vx_maroon)))));
                                 // printf("grad: (%lf, %lf) \n", node->grad.x, node->grad.y);
                             }
+                            zarray_vmap(l.nodes, free);
+                            zarray_destroy(l.nodes);
                         }
                     }
                     // usleep(3000000);
@@ -371,7 +380,10 @@ int main(int argc, char **argv)
     pg_add_int_slider(pg, "brightness", "Bright", 100, 800, state->brightness);
     pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
     pg_add_double_slider(pg, "grad_error", "Error", 0, 2, state->error);
-    pg_add_check_boxes(pg,"add_lines", "Lines", 0, NULL);
+    pg_add_check_boxes(pg,
+                        "add_lines", "Lines", 0, 
+                        "grad_image", "Show Grad Image", 0,
+                                            NULL);
 
     int pg_add_check_boxes(parameter_gui_t *pg, const char *name, const char * desc, int is_checked, ...) __attribute__((sentinel));
 
