@@ -5,6 +5,7 @@
 
 
 char* matrix_format = "%15.5f";
+char image_name[100] = "/home/jjrasche/finalProject/src/finproj/pic0.pnm";
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -19,20 +20,21 @@ struct state
     getopt_t         *gopt;
     parameter_gui_t  *pg;
 
-    int32_t error[3];
+    double error;
     int32_t rgb[3];
-    int min_blob_size;
+    int min_size;
     matd_t* homography_matrix;
     int print_click;
     int clicks_to_calibration;
     zarray_t* anchors;
     int pic_num;
     int take_image;
+    int static_image;
+    int brightness;
+    int add_lines;
 
     vx_world_t *world;  // Where vx objects are live
-    vx_layer_t* layer;
-
-    int phase;
+    vx_layer_t* layer;    
 
     pthread_t animate_thread;
 };
@@ -123,7 +125,21 @@ void custom_destroy(vx_event_handler_t *vh) {
 void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char *name)
 {
     pthread_mutex_lock(&mutex);
-    // state_t *state = pl->impl;
+    state_t *state = pl->impl;
+
+    if (!strcmp("min_size", name)) {
+        state->min_size = pg_gi(pg,name);
+    }    
+    if (!strcmp("grad_error", name)) {
+        state->error = pg_gd(pg,name);
+    }    
+    if (!strcmp("brightness", name)) {
+        state->brightness = pg_gi(pg,name);
+    }    
+    if (!strcmp("add_lines", name)) {
+        state->add_lines = pg_gb(pg,name);
+    }   
+
     pthread_mutex_unlock(&mutex);
 }
 
@@ -160,25 +176,77 @@ void* render_loop(void *data)
                 printf("get_frame fail: %d\n", res);
             }
             else {
-                image_u32_t *im = image_convert_u32(frmd);
+                image_u32_t *im;
+                if(state->static_image == 1) {
+                    im = image_u32_create_from_pnm(image_name);
+                }
+                else {
+                    im = image_convert_u32(frmd);
+                }
                 if (im != NULL) {
+                    pthread_mutex_lock(&mutex);
+                    double error = state->error;
+                    int min_size = state->min_size;
+                    int brightness = state->brightness;
+                    int add_lines = state->add_lines;
+                    int take_pic = state->take_image;
+                    pthread_mutex_unlock(&mutex);
 
- 
+                    // convert_to_grad_image(im, brightness);
 
                     vx_object_t *vim = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, 0);
                     vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
 
-                    test_build_line();
+                    zarray_t* lines = form_lines(im, error, min_size);
 
-                    // vx_buffer_add_back(buf, 
-                    //                 vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                    //                                 vxo_chain (vxo_mat_scale(2),
-                    //                                             // vxo_mat_translate3 (0, 
-                    //                                             // -restor_im->height, 0),
-                    //                                             vxo_sphere(vxo_mesh_style(vx_blue)))));      
+                    int num_lines = zarray_size(lines);
+                    printf("num_lines = %d \n", num_lines);   
                     
-                
+                    int npoints = num_lines * 2;
+                    float points[npoints*3];
+                    if(num_lines != 0) {
+                        for(int i = 0; i < num_lines; i++) 
+                        {
+                            line_t l;
+                            zarray_get(lines, i, &l);
+                            points[6*i + 0] = l.start.x;
+                            points[6*i + 1] = abs(l.start.y - im->height);
+                            points[6*i + 2] = 1;
+                            points[6*i + 3] = l.end.x;
+                            points[6*i + 4] = abs(l.end.y - im->height);
+                            points[6*i + 5] = 1;
+
+                            // print points for every pixel on line
+                            for(int j = 0; j < zarray_size(l.nodes); j++)
+                            {
+                                g_node_t* node;
+                                zarray_get(l.nodes, j, &node);
+                                vx_buffer_add_back(buf,
+                                    vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                        vxo_chain(vxo_mat_translate3(node->loc.x, abs(node->loc.y - im->height), 1),
+                                                    vxo_mat_scale(1.0f),
+                                                    vxo_circle(vxo_mesh_style(vx_maroon)))));
+                                // printf("grad: (%lf, %lf) \n", node->grad.x, node->grad.y);
+                            }
+                        }
+                    }
+                    // usleep(3000000);
+
+                    if(add_lines) {
+                        vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
+                        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                                        vxo_lines(verts, npoints, GL_LINES, 
+                                                            vxo_points_style(vx_green, 2.0f))));
+                    }
+                    if(take_pic == 1) {
+                        pthread_mutex_lock(&mutex);
+                        capture_image(im, 0);
+                        state->take_image = 0;
+                        pthread_mutex_unlock(&mutex);
+                    }
+
                     image_u32_destroy(im);
+                    zarray_destroy(lines);
                 }
             }
         }
@@ -244,7 +312,8 @@ int main(int argc, char **argv)
     // screen if required
     state->gopt = getopt_create();
     getopt_add_bool(state->gopt, 'h', "homography", 0, "calculate homography");
-    getopt_add_bool(state->gopt, 't', "tape", 0, "the sliders are used for tape");
+    getopt_add_bool(state->gopt, 's', "static_image", 0, 
+                    "use a static image rathe than update one");
     getopt_add_string(state->gopt, '\0', "url", "", "Camera URL");
 
     if (!getopt_parse(state->gopt, argc, argv, 1))
@@ -252,6 +321,10 @@ int main(int argc, char **argv)
         printf("Usage: %s [--url=CAMERAURL] [other options]\n\n", argv[0]);
         getopt_do_usage(state->gopt);
         exit(1);
+    }
+
+    if(getopt_get_bool(state->gopt, "static_image")) {
+        state->static_image = 1;
     }
 
     // Set up the imagesource. This looks for a camera url specified on
@@ -291,6 +364,16 @@ int main(int argc, char **argv)
     // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv[2]);
     // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error[2]);
     // pg_add_double_slider(pg, "target_min_blob_size", "target Min Blob Size", 0, 1000, state->target_min_blob_size);
+
+    state->min_size = 100;
+    state->error = .5;
+    state->brightness = 300;
+    pg_add_int_slider(pg, "brightness", "Bright", 100, 800, state->brightness);
+    pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
+    pg_add_double_slider(pg, "grad_error", "Error", 0, 2, state->error);
+    pg_add_check_boxes(pg,"add_lines", "Lines", 0, NULL);
+
+    int pg_add_check_boxes(parameter_gui_t *pg, const char *name, const char * desc, int is_checked, ...) __attribute__((sentinel));
 
     parameter_listener_t *my_listener = calloc(1,sizeof(parameter_listener_t*));
     my_listener->impl = state;

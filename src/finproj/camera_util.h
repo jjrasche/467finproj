@@ -25,8 +25,8 @@ struct grad
 typedef struct loc loc_t;
 struct loc
 {
-    double x;
-    double y;
+    int x;
+    int y;
 };
 
 typedef struct g_node g_node_t;
@@ -61,10 +61,17 @@ struct line
 {
     loc_t start;
     loc_t end;
+    zarray_t* nodes;
 };
 
 
+void convert_to_grad_image(image_u32_t* im, int add);
+
+void capture_image(image_u32_t *im, int num);
+
 void test_build_line();
+
+zarray_t* form_lines(image_u32_t*im, double error, int min_size);
 
 // caller needs to deallocate buf
 void deep_copy_image (image_u32_t* in, image_u32_t* out);

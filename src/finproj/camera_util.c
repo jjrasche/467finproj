@@ -21,8 +21,8 @@ void deep_copy_image (image_u32_t* in, image_u32_t* out) {
 void capture_image(image_u32_t *im, int num)
 {
     char file_name[100];
-    printf("value %d\n",sprintf(file_name, "/afs/umich.edu/user/r/o/ronakrm/eecs467/eecs467_botlab/src/botlab/pic%d.pnm"
-                , num));
+    sprintf(file_name, "/home/jjrasche/finalProject/src/finproj/pic%d.pnm", num);
+
     int ret = image_u32_write_pnm(im, file_name);
     printf("take image %d, err = %d", num, ret);
 
@@ -164,58 +164,97 @@ static void connect(g_node_t* n1, g_node_t* n2) {
 }
 
 
-int compare_pix(color_t a, color_t b)
+double compare_pix(color_t a, color_t b)
 {
-    return(abs(a.r - b.r) + 
-            abs(a.g - b.g) + 
-            abs(a.b - b.b));
+    // return(fabs(a.r - b.r) + 
+    //         fabs(a.g - b.g) + 
+    //         fabs(a.b - b.b));
+    return(sqrt((a.r-b.r)*(a.r-b.r)+
+                (a.b-b.b)*(a.b-b.b)+
+                (a.g-b.g)*(a.g-b.g)));
 }
 
 
+// void test_build_line()
+// {
+//     double x[15] = {1.47  ,  1.50  ,  1.52  ,  1.55 ,   1.57  ,  1.60    ,1.63 ,   1.65  ,  1.68   , 1.70  ,  1.73  ,  1.75 ,   1.78  ,  1.80  ,  1.83};
+//     double y[15] = {52.21  , 53.12 ,  54.48 ,  55.84  , 57.20  , 58.57  , 59.93   ,61.29  , 63.11  , 64.47  , 66.28  , 68.10  , 69.92 ,  72.19  , 74.46};
+//     zarray_t* arr = zarray_create(sizeof(g_node_t*));
+    
+//     for(int i = 0; i< 15; i++)
+//     {
+//         g_node_t* tmp = malloc(sizeof(g_node_t));
+//         tmp->loc.x = x[i];
+//         tmp->loc.y = y[i];
+//         zarray_add(arr, &tmp);
+//     }
+//     line_t l = build_line(arr);
+// }
 
 
-
-grad_t get_pix_gradient(image_u32_t* im, int idx)
+grad_t get_pix_gradient(image_u32_t* im, int x, int y)
 {
+    int idx = y*im->stride + x;
     int abgr = im->buf[idx];
     pixel_t curr_pix = {{(abgr >> 24) & 0xff, (abgr >> 16) & 0xff, 
                             (abgr >> 8) & 0xff, (abgr) & 0xff}, {0, 0},
                             {-1, -1}};
 
     // add gradient from left
-    int tmp_buf = im->buf[idx - 1];
-    color_t left_color = {(tmp_buf >> 24) & 0xff, (tmp_buf >> 16) & 0xff, 
-                            (tmp_buf >> 8) & 0xff, (tmp_buf) & 0xff};    
-    int diff = compare_pix(left_color, curr_pix.color);
-    curr_pix.grad.x += (-1)*diff;
+    if(x > 0) {
+        int left_buf = im->buf[idx - 1];
+        color_t left_color = {(left_buf >> 24) & 0xff, (left_buf >> 16) & 0xff, 
+                                (left_buf >> 8) & 0xff, (left_buf) & 0xff};    
+        double diff = compare_pix(left_color, curr_pix.color);
+        curr_pix.grad.x += (-1)*diff;
+    }
 
     // add gradient from right
-    tmp_buf = im->buf[idx + 1];
-    color_t right_color = {(tmp_buf >> 24) & 0xff, (tmp_buf >> 16) & 0xff, 
-                            (tmp_buf >> 8) & 0xff, (tmp_buf) & 0xff};    
-    diff = compare_pix(right_color, curr_pix.color);
-    curr_pix.grad.x += diff;  
+    if(x < (im->width-1)) {
+        int right_buf = im->buf[idx + 1];
+        color_t right_color = {(right_buf >> 24) & 0xff, (right_buf >> 16) & 0xff, 
+                                (right_buf >> 8) & 0xff, (right_buf) & 0xff};    
+        double diff = compare_pix(right_color, curr_pix.color);
+        curr_pix.grad.x += diff;  
+    }
 
     // add gradient from top
-    tmp_buf = im->buf[idx + im->stride];
-    color_t top_color = {(tmp_buf >> 24) & 0xff, (tmp_buf >> 16) & 0xff, 
-                            (tmp_buf >> 8) & 0xff, (tmp_buf) & 0xff};    
-    diff = compare_pix(top_color, curr_pix.color);
-    curr_pix.grad.y += diff;
+    if(y < (im->height-1)) {
+        int top_buf = im->buf[idx + im->stride];
+        color_t top_color = {(top_buf >> 24) & 0xff, (top_buf >> 16) & 0xff, 
+                                (top_buf >> 8) & 0xff, (top_buf) & 0xff};    
+        double diff = compare_pix(top_color, curr_pix.color);
+        curr_pix.grad.y += diff;
+    }
 
     // add gradient from bottom
-    tmp_buf = im->buf[idx - im->stride];
-    color_t bottom_color = {(tmp_buf >> 24) & 0xff, (tmp_buf >> 16) & 0xff, 
-                            (tmp_buf >> 8) & 0xff, (tmp_buf) & 0xff};    
-    diff = compare_pix(bottom_color, curr_pix.color);
-    curr_pix.grad.y += (-1)*diff;
+    if(y > 0) {
+        int bottom_buf = im->buf[idx - im->stride];
+        color_t bottom_color =  {(bottom_buf >> 24) & 0xff, (bottom_buf >> 16) & 0xff, 
+                                (bottom_buf >> 8) & 0xff, (bottom_buf) & 0xff};    
+        double diff = compare_pix(bottom_color, curr_pix.color);
+        curr_pix.grad.y += (-1)*diff;
+    }
 
     return(curr_pix.grad);
 }
 
+// if 
 double dot_product(grad_t a, grad_t b)
 {
-    return(a.x*b.x + a.y*b.y);
+    // double tmp = fabs(a.x*b.x + a.y*b.y);
+    // if(tmp == 0)
+    // {
+    //     int i = 0;
+    // }
+
+    // double len_a = sqrt(a.x*a.x + b.x*b.x);
+    // double len_b
+
+    // return(fabs(a.x*b.x + a.y*b.y));
+
+    //TODO: if this becomes a problem, look into improving complexity
+    return(fabs(atan2(a.y, a.x) - atan2(b.y, b.x)));
 }
 
 
@@ -237,23 +276,73 @@ zhash_t* build_gradient_image(image_u32_t* im)
             n->parent_node = n;
             n->loc.x = x;
             n->loc.y = y;
-            n->grad = get_pix_gradient(im, idx);
+            n->grad = get_pix_gradient(im, x, y);
 
             if(zhash_put(node_map, &idx, &n, NULL, NULL) == 1)
                 assert(0); 
         }
     }
 
-    zarray_t* items = zhash_values(node_map);
+    // zarray_t* items = zhash_values(node_map);
 
-    for(int i = 0; i < zarray_size(items); i++)
-    {
-        g_node_t* n;
-        zarray_get(items, i, &n);
-        printf("(%d, %d)   grad: (%lf, %lf) \n", n->loc.x, n->loc.y,
-                n->grad.x, n->grad.y);
-    }
+    // for(int i = 0; i < zarray_size(items); i++)
+    // {
+    //     g_node_t* n;
+    //     zarray_get(items, i, &n);
+    //     printf("(%d, %d)   grad: (%lf, %lf) \n", n->loc.x, n->loc.y,
+    //             n->grad.x, n->grad.y);
+    // }
     return(node_map);
+}
+
+
+uint32_t mag_to_gray(g_node_t* n, int add)
+{
+    // calc gradient magnitude
+    double mag = sqrt(n->grad.x*n->grad.x + n->grad.y*n->grad.y);
+
+    // normalize to 0xff or 255
+    int brightness = (mag/add) * 255;
+    // assert(brightness < 256);
+
+    uint32_t color = 0xff000000;
+    color += brightness << 16;
+    color += brightness << 8;
+    color += brightness;
+    // printf("brightness:%d  ,  mag:(%lf, %lf)  %lf\n", brightness, n->grad.x, n->grad.y, mag);
+
+    if(n->grad.x > 20)
+    {
+        int i = 0;
+    }
+    return(color);
+}
+
+// convert to gray scale image where the whiter a pixel, 
+// the larger the gradient
+void convert_to_grad_image(image_u32_t* im, int add)
+{
+    zhash_t* node_map = build_gradient_image(im);
+
+    for(int y = 0; y < (im->height-1); y++) {
+        for(int x = 0; x < (im->width-1); x++) {
+            int idx = y * im->stride + x;
+
+            g_node_t* tmp;
+            zhash_get(node_map, &idx, &tmp);
+
+            im->buf[idx] = mag_to_gray(tmp, add);
+        }
+    }  
+    zhash_destroy(node_map);
+}
+
+
+int zero_grad(grad_t g)
+{
+    if(g.x == 0 && g.y == 0)
+        return(1);
+    return(0);
 }
 
 
@@ -276,7 +365,13 @@ zhash_t* connect_nodes(image_u32_t* im, double error)
                 int tmp_idx = idx - 1;
                 if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
                     assert(0);
-                if(dot_product(curr_n->grad, tmp_n->grad) < error) {
+                if(dot_product(curr_n->grad, tmp_n->grad) < error ) {
+                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
+                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
+                    //         dot_product(curr_n->grad, tmp_n->grad));
+                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
+                        break;
                     connect(curr_n, tmp_n);                    
                 }
             }
@@ -285,6 +380,12 @@ zhash_t* connect_nodes(image_u32_t* im, double error)
                 int tmp_idx = idx - im->stride; 
                 zhash_get(node_map, &tmp_idx, &tmp_n);
                 if(dot_product(curr_n->grad, tmp_n->grad) < error) {
+                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
+                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
+                    //         dot_product(curr_n->grad, tmp_n->grad));
+                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
+                        break;
                     connect(curr_n, tmp_n);  
                 }                  
             }
@@ -324,12 +425,16 @@ zhash_t* form_objects(image_u32_t* im, double error)
 }
 
 
-line_t build_line(zarray_t* node_arr)
+line_t build_line(image_u32_t* im, zarray_t* node_arr)
 {
     line_t l = {{-1,-1}, {-1,-1}};
     int n = zarray_size(node_arr);
     double Sx=0, Sxx=0, Sxy=0, Sy=0, Syy=0;
     double m, b;
+    int larg_y_val = 0;
+    loc_t larg_y_loc = {-1, -1};
+    int small_y_val = im->height;
+    loc_t small_y_loc = {-1, -1};
 
     for(int i = 0; i < n; i++)
     {
@@ -340,29 +445,30 @@ line_t build_line(zarray_t* node_arr)
         Sxy += node->loc.y * node->loc.x;
         Sy += node->loc.y;
         Syy += node->loc.y * node->loc.y;
+
+        // to find the endpoint pixels
+        if(node->loc.y < small_y_val) {
+            small_y_val = small_y_loc.y = node->loc.y;
+            small_y_loc.x = node->loc.x;
+        }
+        if(node->loc.y > larg_y_val) {
+            larg_y_val = larg_y_loc.y = node->loc.y;
+            larg_y_loc.x = node->loc.x;
+        }
     }
     m = (n*Sxy - Sx*Sy) / (n*Sxx - Sx*Sx);
     b = (Sy/n) - (m/n)*Sx;
-    printf("slope: %lf,  y_int: %lf", m, b);
+
+    // find end pixels
+    loc_t p = larg_y_loc;       // P = (x1, y1)
+    l.start.x = (m*p.y + p.x - m*b) / (m*m + 1);
+    l.start.y = (m*m*p.y + m*p.x + b) / (m*m + 1);
+
+    p = small_y_loc;       
+    l.end.x = (m*p.y + p.x - m*b) / (m*m + 1);
+    l.end.y = (m*m*p.y + m*p.x + b) / (m*m + 1);
 
     return(l);
-    // find eqn for line 
-}
-
-void test_build_line()
-{
-    double x[15] = {1.47  ,  1.50  ,  1.52  ,  1.55 ,   1.57  ,  1.60    ,1.63 ,   1.65  ,  1.68   , 1.70  ,  1.73  ,  1.75 ,   1.78  ,  1.80  ,  1.83};
-    double y[15] = {52.21  , 53.12 ,  54.48 ,  55.84  , 57.20  , 58.57  , 59.93   ,61.29  , 63.11  , 64.47  , 66.28  , 68.10  , 69.92 ,  72.19  , 74.46};
-    zarray_t* arr = zarray_create(sizeof(g_node_t*));
-    
-    for(int i = 0; i< 15; i++)
-    {
-        g_node_t* tmp = malloc(sizeof(g_node_t));
-        tmp->loc.x = x[i];
-        tmp->loc.y = y[i];
-        zarray_add(arr, &tmp);
-    }
-    line_t l = build_line(arr);
 }
 
 
@@ -378,20 +484,18 @@ zarray_t* form_lines(image_u32_t*im, double error, int min_size)
     for(int i = 0; i < zarray_size(arr_arr); i++)
     {
         zarray_t* obj_arr;
-        zarray_get(arr_arr, &i, &obj_arr);
+        zarray_get(arr_arr, i, &obj_arr);
 
         if(zarray_size(obj_arr) < min_size) {
+            zarray_vmap(obj_arr, free);
             zarray_destroy(obj_arr);
             continue;
         }
-
-        line_t l = build_line(obj_arr);
-
-
-
-
+        line_t l = build_line(im, obj_arr);
+        l.nodes = obj_arr;
+        zarray_add(lines, &l);
     }
-
+    return(lines);
 }
 
 
