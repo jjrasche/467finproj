@@ -29,6 +29,13 @@ struct loc
     int y;
 };
 
+typedef struct vec vec_t;
+struct vec
+{
+    double x;
+    double y;
+};
+
 typedef struct g_node g_node_t;
 struct g_node
 {
@@ -39,8 +46,8 @@ struct g_node
     grad_t grad;
 };
 
-typedef struct color color_t;
-struct color
+typedef struct abgr abgr_t;
+struct abgr
 {
     int a;
     int b;
@@ -51,7 +58,7 @@ struct color
 typedef struct pixel pixel_t;
 struct pixel
 {
-    color_t color;
+    abgr_t abgr;
     grad_t grad;
     loc_t loc;
 };
@@ -64,6 +71,14 @@ struct line
     zarray_t* nodes;
 };
 
+typedef struct hsv hsv_t;
+struct hsv
+{
+    double hue;
+    double sat;
+    double val;
+};
+
 
 void convert_to_grad_image(image_u32_t* im, int add);
 
@@ -71,7 +86,8 @@ void capture_image(image_u32_t *im, int num);
 
 void test_build_line();
 
-zarray_t* form_lines(image_u32_t*im, double error, int min_size);
+zarray_t* form_lines(image_u32_t*im, double max_grad_diff, int min_size, 
+                        hsv_t obj_hsv, hsv_t max_hsv_diff);
 
 // caller needs to deallocate buf
 void deep_copy_image (image_u32_t* in, image_u32_t* out);
@@ -98,7 +114,7 @@ void new_way(image_u32_t* distort_im, image_u32_t* restor_im,
 void undistort_testing(image_u32_t* distort_im, image_u32_t* restor_im,
                      double b, double c, double sat_change);
 
-void rgb_to_hsv(uint32_t rgb, double* hsv);
+void rgb_to_hsv(uint32_t abgr, hsv_t hsv);
 
 int changeSaturation(int abgr, double change);
 

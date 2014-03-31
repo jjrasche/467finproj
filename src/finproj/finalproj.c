@@ -20,9 +20,10 @@ struct state
     getopt_t         *gopt;
     parameter_gui_t  *pg;
 
-    double error;
-    int32_t rgb[3];
+    hsv_t target_error;
+    hsv_t target_hsv;
     int min_size;
+    double max_grad_diff;
     matd_t* homography_matrix;
     int print_click;
     int clicks_to_calibration;
@@ -132,7 +133,7 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
         state->min_size = pg_gi(pg,name);
     }    
     if (!strcmp("grad_error", name)) {
-        state->error = pg_gd(pg,name);
+        state->max_grad_diff = pg_gd(pg,name);
     }    
     if (!strcmp("brightness", name)) {
         state->brightness = pg_gi(pg,name);
@@ -140,8 +141,26 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("add_lines", name)) {
         state->add_lines = pg_gb(pg,name);
     }   
-    if (!strcmp("grad_image", name)) {
+    if (!strcmp("grad_imag", name)) {
         state->grad_image = pg_gb(pg,name);
+    }   
+    if (!strcmp("target_h", name)) {
+        state->target_hsv.hue = pg_gd(pg,name);
+    }   
+    if (!strcmp("target_s", name)) {
+        state->target_hsv.sat = pg_gd(pg,name);
+    }   
+    if (!strcmp("target_v", name)) {
+        state->target_hsv.val = pg_gd(pg,name);
+    }   
+    if (!strcmp("target_h_err", name)) {
+        state->target_error.hue = pg_gd(pg,name);
+    }   
+    if (!strcmp("target_s_err", name)) {
+        state->target_error.sat = pg_gd(pg,name);
+    }   
+    if (!strcmp("target_v_err", name)) {
+        state->target_error.val = pg_gd(pg,name);
     }   
 
     pthread_mutex_unlock(&mutex);
@@ -189,12 +208,14 @@ void* render_loop(void *data)
                 }
                 if (im != NULL) {
                     pthread_mutex_lock(&mutex);
-                    double error = state->error;
+                    double max_grad_diff = state->max_grad_diff;
                     int min_size = state->min_size;
                     int brightness = state->brightness;
                     int add_lines = state->add_lines;
                     int take_pic = state->take_image;
                     int set_grad_image = state->grad_image;
+                    hsv_t max_hsv_diff = state->target_error;
+                    hsv_t hsv = state->target_hsv;
                     pthread_mutex_unlock(&mutex);
 
                     if(set_grad_image == 1) {              
@@ -204,7 +225,7 @@ void* render_loop(void *data)
                     vx_object_t *vim = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, 0);
                     vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
 
-                    zarray_t* lines = form_lines(im, error, min_size);
+                    zarray_t* lines = form_lines(im, max_grad_diff, min_size, hsv, max_hsv_diff);
 
                     int num_lines = zarray_size(lines);
                     printf("num_lines = %d \n", num_lines);   
@@ -232,7 +253,7 @@ void* render_loop(void *data)
                                     vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
                                         vxo_chain(vxo_mat_translate3(node->loc.x, abs(node->loc.y - im->height), 1),
                                                     vxo_mat_scale(1.0f),
-                                                    vxo_circle(vxo_mesh_style(vx_maroon)))));
+                                                    vxo_circle(vxo_mesh_style(vx_yellow)))));
                                 // printf("grad: (%lf, %lf) \n", node->grad.x, node->grad.y);
                             }
                             zarray_vmap(l.nodes, free);
@@ -298,15 +319,6 @@ int main(int argc, char **argv)
     my_event_handler->destroy = custom_destroy;
     vx_layer_add_event_handler(state->layer, my_event_handler);
     state->running = 1;
-
-    // state->target_error[0] = 10;
-    // state->target_error[1] = .5;
-    // state->target_error[2] = .5;
-    // state->target_min_blob_size = 6;
-    // state->target_hsv[0] = 180;
-    // state->target_hsv[1] = 0.5;
-    // state->target_hsv[2] = 0.5;
-
     
     //Homography calculated 5:18PM 3/3/14 with b=1.2.16, c = -.0055.
     // const double h_data[3][3] = {//[3][3];
@@ -366,20 +378,25 @@ int main(int argc, char **argv)
     vx_remote_display_source_t *cxn = vx_remote_display_source_create(&state->vxapp);
     parameter_gui_t *pg = pg_create();
 
-    // pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv[0]);
-    // pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error[0]);
-    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv[1]);
-    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error[1]);
-    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv[2]);
-    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error[2]);
-    // pg_add_double_slider(pg, "target_min_blob_size", "target Min Blob Size", 0, 1000, state->target_min_blob_size);
+    state->target_error.hue = 10;
+    state->target_error.sat = .5;
+    state->target_error.val = .5;
+    state->target_hsv.hue = 180;
+    state->target_hsv.sat = 0.5;
+    state->target_hsv.val = 0.5;
+    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
+    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
+    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
+    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
+    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
+    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
 
     state->min_size = 100;
-    state->error = .5;
+    state->max_grad_diff = .779;
     state->brightness = 300;
     pg_add_int_slider(pg, "brightness", "Bright", 100, 800, state->brightness);
     pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
-    pg_add_double_slider(pg, "grad_error", "Error", 0, 2, state->error);
+    pg_add_double_slider(pg, "grad_error", "Error", 0, 2, state->max_grad_diff);
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 
                         "grad_image", "Show Grad Image", 0,
