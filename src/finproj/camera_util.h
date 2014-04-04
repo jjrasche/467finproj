@@ -4,6 +4,8 @@
 #include "custom_util.h" 
 #include "math.h"
 
+#define MAXDOT 10       // arbirtrarly high number, atan2 cannot return > PI
+#define PI 3.1415925
 #define MIN3(x,y,z)  ((y) <= (z) ? \
                          ((x) <= (y) ? (x) : (y)) \
                      : \
@@ -78,6 +80,15 @@ struct hsv
     double sat;
     double val;
 };
+typedef struct threshold_metric threshold_metrics_t;
+struct threshold_metric
+{   
+    hsv_t obj_hsv;
+    hsv_t color_error;
+    double max_grad_diff;
+    int min_size;
+    double min_mag;
+};
 
 
 void convert_to_grad_image(image_u32_t* im, int add);
@@ -86,8 +97,8 @@ void capture_image(image_u32_t *im, int num);
 
 void test_build_line();
 
-zarray_t* form_lines(image_u32_t*im, double max_grad_diff, int min_size, 
-                        hsv_t obj_hsv, hsv_t max_hsv_diff);
+// passes in an image to form segementation image, if NULL does nothing
+zarray_t* form_lines(image_u32_t*im, threshold_metrics_t thresh, image_u32_t* seg_image);
 
 // caller needs to deallocate buf
 void deep_copy_image (image_u32_t* in, image_u32_t* out);
@@ -114,7 +125,7 @@ void new_way(image_u32_t* distort_im, image_u32_t* restor_im,
 void undistort_testing(image_u32_t* distort_im, image_u32_t* restor_im,
                      double b, double c, double sat_change);
 
-void rgb_to_hsv(uint32_t abgr, hsv_t hsv);
+void rgb_to_hsv(uint32_t abgr, hsv_t* hsv);
 
 int changeSaturation(int abgr, double change);
 

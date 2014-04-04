@@ -79,7 +79,7 @@ int average_surrounding_pixels(image_u32_t* image, int x, int y) {
     return(average);
 }
 
-void rgb_to_hsv(uint32_t abgr, hsv_t hsv)
+void rgb_to_hsv(uint32_t abgr, hsv_t* hsv)
 {
     double rgb[3];
     rgb[2] = (double)(abgr & 0xff) / 255.0f;
@@ -92,26 +92,67 @@ void rgb_to_hsv(uint32_t abgr, hsv_t hsv)
     rgb_range = rgb_max - rgb_min;
 
     //Compute Value
-    hsv.val = rgb_max;
-    if (hsv.val == 0) {
-        hsv.sat = hsv.hue = 0;
+    hsv->val = rgb_max;
+    if (hsv->val == 0) {
+        hsv->sat = hsv->hue = 0;
         return;
     }
 
     //Compute Saturation
-    hsv.sat = rgb_range/rgb_max;
-    if (hsv.sat == 0) {
-        hsv.hue = 0;
+    hsv->sat = rgb_range/rgb_max;
+    if (hsv->sat == 0) {
+        hsv->hue = 0;
         return;
     }
 
     //Compute Hue
     if (rgb_max == rgb[2]) {
-        hsv.hue = 60*(fmod(((rgb[1]-rgb[0])/rgb_range),6));
+        hsv->hue = 60*(fmod(((rgb[1]-rgb[0])/rgb_range),6));
     } else if (rgb_max == rgb[1]) {
-        hsv.hue = 60*(((rgb[0]-rgb[2])/rgb_range)+2);
+        hsv->hue = 60*(((rgb[0]-rgb[2])/rgb_range)+2);
     } else if (rgb_max == rgb[0]) {
-        hsv.hue = 60*(((rgb[2]-rgb[1])/rgb_range)+4);
+        hsv->hue = 60*(((rgb[2]-rgb[1])/rgb_range)+4);
+    } else {
+        //how did you get here???
+        assert(0);
+    }
+
+    return;
+}
+
+void abgr_to_hsv(uint32_t abgr, double* hsv)
+{
+    double rgb[3];
+    rgb[2] = (double)(abgr & 0xff) / 255.0f;
+    rgb[1] = (double)(abgr >> 8 & 0xff) / 255.0f;
+    rgb[0] = (double)(abgr >> 16 & 0xff) / 255.0f;
+
+    double rgb_min, rgb_max, rgb_range;
+    rgb_min = MIN3(rgb[2], rgb[1], rgb[0]);
+    rgb_max = MAX3(rgb[2], rgb[1], rgb[0]);
+    rgb_range = rgb_max - rgb_min;
+
+    //Compute Value
+    hsv[2] = rgb_max;
+    if (hsv[2] == 0) {
+        hsv[1] = hsv[0] = 0;
+        return;
+    }
+
+    //Compute Saturation
+    hsv[1] = rgb_range/rgb_max;
+    if (hsv[1] == 0) {
+        hsv[0] = 0;
+        return;
+    }
+
+    //Compute Hue
+    if (rgb_max == rgb[2]) {
+        hsv[0] = 60*(fmod(((rgb[1]-rgb[0])/rgb_range),6));
+    } else if (rgb_max == rgb[1]) {
+        hsv[0] = 60*(((rgb[0]-rgb[2])/rgb_range)+2);
+    } else if (rgb_max == rgb[0]) {
+        hsv[0] = 60*(((rgb[2]-rgb[1])/rgb_range)+4);
     } else {
         //how did you get here???
         assert(0);
@@ -163,6 +204,26 @@ static void connect(g_node_t* n1, g_node_t* n2) {
     // n1's child nodes, are not changed to n2
 }
 
+double dot_product(grad_t a, grad_t b, double min_mag)
+{
+    double mag_a = sqrt(a.x*a.x+a.y*a.y);
+    if(mag_a < min_mag) {
+        return(MAXDOT);
+    }
+    double mag_b = sqrt(a.x*a.x+a.y*a.y);
+    if(mag_b < min_mag) {
+        return(MAXDOT);
+    }
+    // if both above a magnitude, return their dot product
+    double ret = fabs(atan2(a.y, a.x) - atan2(b.y, b.x));
+    if(ret < (-1)*PI) {
+        ret += 2*PI;
+    }
+    if(ret > PI) {
+        ret -= 2*PI;
+    }
+    return(ret);
+}
 
 double compare_pix(abgr_t a, abgr_t b)
 {
@@ -173,23 +234,6 @@ double compare_pix(abgr_t a, abgr_t b)
                 (a.b-b.b)*(a.b-b.b)+
                 (a.g-b.g)*(a.g-b.g)));
 }
-
-
-// void test_build_line()
-// {
-//     double x[15] = {1.47  ,  1.50  ,  1.52  ,  1.55 ,   1.57  ,  1.60    ,1.63 ,   1.65  ,  1.68   , 1.70  ,  1.73  ,  1.75 ,   1.78  ,  1.80  ,  1.83};
-//     double y[15] = {52.21  , 53.12 ,  54.48 ,  55.84  , 57.20  , 58.57  , 59.93   ,61.29  , 63.11  , 64.47  , 66.28  , 68.10  , 69.92 ,  72.19  , 74.46};
-//     zarray_t* arr = zarray_create(sizeof(g_node_t*));
-    
-//     for(int i = 0; i< 15; i++)
-//     {
-//         g_node_t* tmp = malloc(sizeof(g_node_t));
-//         tmp->loc.x = x[i];
-//         tmp->loc.y = y[i];
-//         zarray_add(arr, &tmp);
-//     }
-//     line_t l = build_line(arr);
-// }
 
 
 grad_t get_pix_gradient(image_u32_t* im, int x, int y)
@@ -209,24 +253,6 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         curr_pix.grad.x += (-1)*diff;
     }
 
-    // add gradient from right
-    if(x < (im->width-1)) {
-        int right_buf = im->buf[idx + 1];
-        abgr_t right_color = {(right_buf >> 24) & 0xff, (right_buf >> 16) & 0xff, 
-                                (right_buf >> 8) & 0xff, (right_buf) & 0xff};    
-        double diff = compare_pix(right_color, curr_pix.abgr);
-        curr_pix.grad.x += diff;  
-    }
-
-    // add gradient from top
-    if(y < (im->height-1)) {
-        int top_buf = im->buf[idx + im->stride];
-        abgr_t top_color = {(top_buf >> 24) & 0xff, (top_buf >> 16) & 0xff, 
-                                (top_buf >> 8) & 0xff, (top_buf) & 0xff};    
-        double diff = compare_pix(top_color, curr_pix.abgr);
-        curr_pix.grad.y += diff;
-    }
-
     // add gradient from bottom
     if(y > 0) {
         int bottom_buf = im->buf[idx - im->stride];
@@ -236,27 +262,38 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         curr_pix.grad.y += (-1)*diff;
     }
 
-    return(curr_pix.grad);
-}
+    // // add gradient from bottom-left
+    // if(x > 0 && y > 0) {
+    //     int bl_buf = im->buf[idx - 1 - im->stride];
+    //     abgr_t bl_color = {(bl_buf >> 24) & 0xff, (bl_buf >> 16) & 0xff, 
+    //                             (bl_buf >> 8) & 0xff, (bl_buf) & 0xff};    
+    //     double diff = compare_pix(bl_color, curr_pix.abgr);
+    //     //TODO: think about the amount of weight the corner pix should get
+    //     // current thought is equal 
+    //     curr_pix.grad.x += (-1)*diff;
+    //     curr_pix.grad.y += (-1)*diff;
+    // }  
 
-// if 
-double dot_product(grad_t a, grad_t b)
-{
-    // double tmp = fabs(a.x*b.x + a.y*b.y);
-    // if(tmp == 0)
-    // {
-    //     int i = 0;
+    // // add gradient from right
+    // if(x < (im->width-1)) {
+    //     int right_buf = im->buf[idx + 1];
+    //     abgr_t right_color = {(right_buf >> 24) & 0xff, (right_buf >> 16) & 0xff, 
+    //                             (right_buf >> 8) & 0xff, (right_buf) & 0xff};    
+    //     double diff = compare_pix(right_color, curr_pix.abgr);
+    //     curr_pix.grad.x += diff;  
     // }
 
-    // double len_a = sqrt(a.x*a.x + b.x*b.x);
-    // double len_b
+    // // add gradient from top
+    // if(y < (im->height-1)) {
+    //     int top_buf = im->buf[idx + im->stride];
+    //     abgr_t top_color = {(top_buf >> 24) & 0xff, (top_buf >> 16) & 0xff, 
+    //                             (top_buf >> 8) & 0xff, (top_buf) & 0xff};    
+    //     double diff = compare_pix(top_color, curr_pix.abgr);
+    //     curr_pix.grad.y += diff;
+    // }
 
-    // return(fabs(a.x*b.x + a.y*b.y));
-
-    //TODO: if this becomes a problem, look into improving complexity
-    return(fabs(atan2(a.y, a.x) - atan2(b.y, b.x)));
+    return(curr_pix.grad);
 }
-
 
 // convert image: pixels -> gradient nodes
 zhash_t* build_gradient_image(image_u32_t* im)
@@ -282,16 +319,6 @@ zhash_t* build_gradient_image(image_u32_t* im)
                 assert(0); 
         }
     }
-
-    // zarray_t* items = zhash_values(node_map);
-
-    // for(int i = 0; i < zarray_size(items); i++)
-    // {
-    //     g_node_t* n;
-    //     zarray_get(items, i, &n);
-    //     printf("(%d, %d)   grad: (%lf, %lf) \n", n->loc.x, n->loc.y,
-    //             n->grad.x, n->grad.y);
-    // }
     return(node_map);
 }
 
@@ -330,7 +357,7 @@ void convert_to_grad_image(image_u32_t* im, int add)
 
             g_node_t* tmp;
             zhash_get(node_map, &idx, &tmp);
-
+    
             im->buf[idx] = mag_to_gray(tmp, add);
             free(tmp);
         }
@@ -349,7 +376,7 @@ int zero_grad(grad_t g)
 
 
 // connect similar gradient nodes, close to each other
-zhash_t* connect_nodes(image_u32_t* im, double max_grad_diff)
+zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
 {
     zhash_t* node_map = build_gradient_image(im);
 
@@ -367,11 +394,12 @@ zhash_t* connect_nodes(image_u32_t* im, double max_grad_diff)
                 int tmp_idx = idx - 1;
                 if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
                     assert(0);
-                if(dot_product(curr_n->grad, tmp_n->grad) < max_grad_diff ) {
+                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
+                                < thresh.max_grad_diff ) {
                     // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
                     //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
                     //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad));
+                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
                     if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
                         break;
                     connect(curr_n, tmp_n);                    
@@ -381,41 +409,42 @@ zhash_t* connect_nodes(image_u32_t* im, double max_grad_diff)
             if(y > 0) { 
                 int tmp_idx = idx - im->stride; 
                 zhash_get(node_map, &tmp_idx, &tmp_n);
-                if(dot_product(curr_n->grad, tmp_n->grad) < max_grad_diff) {
+                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
+                                < thresh.max_grad_diff) {
                     // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
                     //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
                     //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad));
+                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
                     if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
                         break;
                     connect(curr_n, tmp_n);  
                 }                  
             }
-            // check bottom left 
-            if(x > 0 && y > 0) {
-                int tmp_idx = idx - (1 + im->stride);
-                if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
-                    assert(0);
-                if(dot_product(curr_n->grad, tmp_n->grad) < max_grad_diff ) {
-                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad));
-                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-                        break;
-                    connect(curr_n, tmp_n);                    
-                }
-            }
-            // // check right 
+            // // check bottom left 
+            // if(x > 0 && y > 0) {
+            //     int tmp_idx = idx - (1 + im->stride);
+            //     if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
+            //         assert(0);
+            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < max_grad_diff ) {
+            //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+            //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
+            //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
+            //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
+            //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
+            //             break;
+            //         connect(curr_n, tmp_n);                    
+            //     }
+            // }
+            // check right 
             // if(x < im->width-1) {
             //     int tmp_idx = idx + 1;
             //     if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
             //         assert(0);
-            //     if(dot_product(curr_n->grad, tmp_n->grad) < max_grad_diff ) {
+            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < max_grad_diff ) {
             //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
             //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
             //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-            //         //         dot_product(curr_n->grad, tmp_n->grad));
+            //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
             //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
             //             break;
             //         connect(curr_n, tmp_n);                    
@@ -425,11 +454,11 @@ zhash_t* connect_nodes(image_u32_t* im, double max_grad_diff)
             // if(y < im->height-1) { 
             //     int tmp_idx = idx + im->stride; 
             //     zhash_get(node_map, &tmp_idx, &tmp_n);
-            //     if(dot_product(curr_n->grad, tmp_n->grad) < max_grad_diff) {
+            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < max_grad_diff) {
             //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
             //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
             //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-            //         //         dot_product(curr_n->grad, tmp_n->grad));
+            //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
             //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
             //             break;
             //         connect(curr_n, tmp_n);  
@@ -442,12 +471,12 @@ zhash_t* connect_nodes(image_u32_t* im, double max_grad_diff)
 
 // iterate over every node, putting into an arary based on its parent
 // returns zhash of zarray that contain g_node
-zhash_t* form_objects(image_u32_t* im, double max_grad_diff)
+zhash_t* form_objects(image_u32_t* im, threshold_metrics_t thresh)
 {
     // node->parent_id -> zarray_t  (full of nodes)
     zhash_t* obj_hash = zhash_create(sizeof(uint32_t), sizeof(zarray_t*), 
             zhash_uint32_hash, zhash_uint32_equals);
-    zhash_t* node_map = connect_nodes(im, max_grad_diff);
+    zhash_t* node_map = connect_nodes(im, thresh);
 
     for(int y = 0; y < (im->height-1); y++) {
         for(int x = 0; x < (im->width-1); x++) {
@@ -545,7 +574,7 @@ int color_match(int comp, hsv_t base, hsv_t max_error)
 {
     // convert comp to hsv
     hsv_t comp_hsv;
-    rgb_to_hsv(comp, comp_hsv);
+    rgb_to_hsv(comp, &comp_hsv);
 
     hsv_t error = {fabs(base.hue - comp_hsv.hue), 
                         fabs(base.sat - comp_hsv.sat), 
@@ -572,8 +601,19 @@ int right_color(image_u32_t* im, hsv_t color, hsv_t max_error, line_t* l)
     {
         if(idx_to_checkS[i] < idx_max && idx_to_checkS[i] > 0)
         {
-            if(!color_match(im->buf[idx_to_checkS[i]], color, max_error))
+            if(color_match(im->buf[idx_to_checkS[i]], color, max_error))
+            {
+                hsv_t hsv;
+                double hsv2[3];
+                rgb_to_hsv(im->buf[idx_to_checkS[i]], &hsv);
+                abgr_to_hsv(im->buf[idx_to_checkS[i]], hsv2);
+                // printf("base:(%lf, %lf, %lf)  comp:(%lf, %lf, %lf) , other:(%lf, %lf, %lf)  i:%d,  abgr:%x\n", 
+                //         color.hue, color.sat, color.val, 
+                //         hsv.hue, hsv.sat, hsv.val, 
+                //         hsv2[0], hsv2[1], hsv2[2],
+                        // i, im->buf[idx_to_checkS[i]]);
                 return(1);
+            }
         }
     }
 
@@ -585,46 +625,77 @@ int right_color(image_u32_t* im, hsv_t color, hsv_t max_error, line_t* l)
     {
         if(idx_to_checkE[i] < idx_max && idx_to_checkE[i] > 0)
         {
-            if(!color_match(im->buf[idx_to_checkE[i]], color, max_error))
+            if(color_match(im->buf[idx_to_checkE[i]], color, max_error))
                 return(1);
         }
     }
     return(0);
 }
 
+void blank_image(image_u32_t* im)
+{
+    for(int y = 0; y < (im->height-1); y++) {
+        for(int x = 0; x < (im->width-1); x++) {
+            im->buf[y+im->stride + x] = 0xFF000000;
+        }
+    }
+}
+
+// color all pixels in array the same color
+void color_blob_image(image_u32_t* im, zarray_t* arr)
+{
+    g_node_t* n;
+    zarray_get(arr, 0, &n);
+    uint32_t color = 0xFF000000 | (n->parent_id & 0xFF);
+
+    for(int i = 0; i < zarray_size(arr); i++)
+    {
+        zarray_get(arr, 0, &n);
+        int x = n->id % im->stride;
+        int y = n->id / im->stride;
+        int adj_y = abs(y-im->height);
+        im->buf[adj_y*im->stride + x] = color;
+    }
+}
+
+
 
 // create lines from gradient objects
 // qualify objects, and build line
-zarray_t* form_lines(image_u32_t*im, double max_grad_diff, int min_size, 
-                        hsv_t obj_hsv, hsv_t max_hsv_diff)
+zarray_t* form_lines(image_u32_t*im, threshold_metrics_t thresh, image_u32_t* seg_image)
 {
-    zhash_t* obj_hash = form_objects(im, max_grad_diff);
+    zhash_t* obj_hash = form_objects(im, thresh);
     zarray_t* arr_arr = zhash_values(obj_hash);
     zarray_t* lines = zarray_create(sizeof(line_t));
 
+    if(seg_image != NULL) {
+        blank_image(seg_image);
+    }
     // iterate through objects, qualify and form lines
     for(int i = 0; i < zarray_size(arr_arr); i++)
     {
         zarray_t* obj_arr;
         zarray_get(arr_arr, i, &obj_arr);
 
-        if(zarray_size(obj_arr) < min_size) {
+        if(zarray_size(obj_arr) < thresh.min_size) {
             zarray_vmap(obj_arr, free);
             zarray_destroy(obj_arr);
             continue;
         }        
         line_t l = build_line(im, obj_arr);
         // only add line if a certian color is on one side
-        if(!right_color(im, obj_hsv, max_hsv_diff, &l))
-        {
-            zarray_vmap(obj_arr, free);
-            zarray_destroy(obj_arr);
-            continue;      
-        }
+        // if(!right_color(im, thresh.obj_hsv, thresh.color_error, &l))
+        // {
+        //     zarray_vmap(obj_arr, free);
+        //     zarray_destroy(obj_arr);
+        //     continue;      
+        // }
 
         l.nodes = obj_arr;
-
         zarray_add(lines, &l);
+        if(seg_image != NULL) {
+            color_blob_image(seg_image, obj_arr);
+        }
     }
     zarray_destroy(arr_arr);
     zhash_destroy(obj_hash);
@@ -632,3 +703,26 @@ zarray_t* form_lines(image_u32_t*im, double max_grad_diff, int min_size,
 }
 
 
+
+
+
+
+
+
+
+
+// void test_build_line()
+// {
+//     double x[15] = {1.47  ,  1.50  ,  1.52  ,  1.55 ,   1.57  ,  1.60    ,1.63 ,   1.65  ,  1.68   , 1.70  ,  1.73  ,  1.75 ,   1.78  ,  1.80  ,  1.83};
+//     double y[15] = {52.21  , 53.12 ,  54.48 ,  55.84  , 57.20  , 58.57  , 59.93   ,61.29  , 63.11  , 64.47  , 66.28  , 68.10  , 69.92 ,  72.19  , 74.46};
+//     zarray_t* arr = zarray_create(sizeof(g_node_t*));
+    
+//     for(int i = 0; i< 15; i++)
+//     {
+//         g_node_t* tmp = malloc(sizeof(g_node_t));
+//         tmp->loc.x = x[i];
+//         tmp->loc.y = y[i];
+//         zarray_add(arr, &tmp);
+//     }
+//     line_t l = build_line(arr);
+// }
