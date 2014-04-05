@@ -1,5 +1,6 @@
 #include "camera_util.h"
 #include "limits.h"
+#include <stdlib.h>
 // #include "math.h"
 #define  Pr  .299
 #define  Pg  .587
@@ -120,46 +121,71 @@ void rgb_to_hsv(uint32_t abgr, hsv_t* hsv)
     return;
 }
 
-void abgr_to_hsv(uint32_t abgr, double* hsv)
+uint32_t hsv_to_rgb(hsv_t hsv)
 {
-    double rgb[3];
-    rgb[2] = (double)(abgr & 0xff) / 255.0f;
-    rgb[1] = (double)(abgr >> 8 & 0xff) / 255.0f;
-    rgb[0] = (double)(abgr >> 16 & 0xff) / 255.0f;
+    double h, f, p, q, t;
+    int i;
+    abgr_t out;
+    uint32_t ret = 0xFF000000;
 
-    double rgb_min, rgb_max, rgb_range;
-    rgb_min = MIN3(rgb[2], rgb[1], rgb[0]);
-    rgb_max = MAX3(rgb[2], rgb[1], rgb[0]);
-    rgb_range = rgb_max - rgb_min;
-
-    //Compute Value
-    hsv[2] = rgb_max;
-    if (hsv[2] == 0) {
-        hsv[1] = hsv[0] = 0;
-        return;
+    if(hsv.sat == 0.0) {  //grey    
+        ret += (int)(hsv.val*0xFF);
+        ret += (int)(hsv.val*0xFF) << 8;
+        ret += (int)(hsv.val*0xFF) << 16;
+        return(ret);
     }
 
-    //Compute Saturation
-    hsv[1] = rgb_range/rgb_max;
-    if (hsv[1] == 0) {
-        hsv[0] = 0;
-        return;
-    }
 
-    //Compute Hue
-    if (rgb_max == rgb[2]) {
-        hsv[0] = 60*(fmod(((rgb[1]-rgb[0])/rgb_range),6));
-    } else if (rgb_max == rgb[1]) {
-        hsv[0] = 60*(((rgb[0]-rgb[2])/rgb_range)+2);
-    } else if (rgb_max == rgb[0]) {
-        hsv[0] = 60*(((rgb[2]-rgb[1])/rgb_range)+4);
-    } else {
-        //how did you get here???
-        assert(0);
+    h = hsv.hue/60;            // sector 0 to 5
+    i = floor(h);
+    f = h - i;                  // factorial part of h
+    p = hsv.val * ( 1 - hsv.sat );
+    q = hsv.val * ( 1 - hsv.sat * f );
+    t = hsv.val * ( 1 - hsv.sat * ( 1 - f ) );
+    switch( i ) {
+        case 0:
+            out.r = hsv.val * 0xFF;
+            out.g = t * 0xFF;
+            out.b = p * 0xFF;
+            break;
+        case 1:
+            out.r = q * 0xFF;
+            out.g = hsv.val * 0xFF;
+            out.b = p * 0xFF;
+            break;
+        case 2:
+            out.r = p * 0xFF;
+            out.g = hsv.val * 0xFF;
+            out.b = t * 0xFF;
+            break;
+        case 3:
+            out.r = p * 0xFF;
+            out.g = q * 0xFF;
+            out.b = hsv.val * 0xFF;
+            break;
+        case 4:
+            out.r = t * 0xFF;
+            out.g = p * 0xFF;
+            out.b = hsv.val * 0xFF;
+            break;
+        default:        // case 5:
+            out.r = hsv.val * 0xFF;
+            out.g = p * 0xFF;
+            out.b = q * 0xFF;
     }
+    // rgb[2] = (double)(abgr & 0xff) / 255.0f;
+    // rgb[1] = (double)(abgr >> 8 & 0xff) / 255.0f;
+    // rgb[0] = (double)(abgr >> 16 & 0xff) / 255.0f;
 
-    return;
+    ret += out.r;
+    ret += out.g << 8;
+    ret += out.b << 16;
+
+    // printf("red:%x , blue:%x , green:%x ,  out:%x\n", out.r, out.b, out.g, ret);
+
+    return(ret);
 }
+
 
 int changeSaturation(int abgr, double change)
 {
@@ -185,6 +211,22 @@ int changeSaturation(int abgr, double change)
     return new_abgr;
 }
 
+// image is taken flipped, if one wants to process
+// the corrected image, must first flip it vertically 
+// it was hard to analyze how the image processing was working,
+// because I had to flip the expectations in my head, also
+// there were many places where I was individually flipping
+// a pixel or part of an image, so this consolidates that
+void flip_image(image_u32_t* im, image_u32_t* flipped)
+{
+    for(int y = 0; y < im->height; y++) {
+        for(int x = 0; x < im->width; x++) {
+            int orig_idx = y * im->stride + x;
+            int flip_idx = abs(y - (im->height-1)) * im->stride + x;
+            flipped->buf[flip_idx] = im->buf[orig_idx];
+        }
+    }
+}
 
 g_node_t* resolve_r(g_node_t* n) {
     if(n->parent_id == n->id) return n;
@@ -210,19 +252,26 @@ double dot_product(grad_t a, grad_t b, double min_mag)
     if(mag_a < min_mag) {
         return(MAXDOT);
     }
-    double mag_b = sqrt(a.x*a.x+a.y*a.y);
+    double mag_b = sqrt(b.x*b.x+b.y*b.y);
     if(mag_b < min_mag) {
         return(MAXDOT);
     }
     // if both above a magnitude, return their dot product
-    double ret = fabs(atan2(a.y, a.x) - atan2(b.y, b.x));
+    double ret = fabs(atan2(a.y, a.x) - atan2(b.y, b.x));//* (180/PI);
+    if(ret > 360)
+    {
+        int i = 0;
+    }
     if(ret < (-1)*PI) {
         ret += 2*PI;
     }
     if(ret > PI) {
         ret -= 2*PI;
     }
-    return(ret);
+    // printf("a:(%lf, %lf, %lf)   b(%lf, %lf, %lf)   ret:(%lf, %lf)\n",
+    //         a.x, a.y, mag_a, b.x, b.y, mag_b, 
+    //         fabs(atan2(a.y, a.x) - atan2(b.y, b.x)), fabs(ret)*(180/PI));
+    return(fabs(ret)*(180/PI));
 }
 
 double compare_pix(abgr_t a, abgr_t b)
@@ -235,6 +284,18 @@ double compare_pix(abgr_t a, abgr_t b)
                 (a.g-b.g)*(a.g-b.g)));
 }
 
+
+// returns {-1, -1} if lines do not intersect inside the image box
+// loc_t find_line_intersect()
+// {
+//    double det = A1*B2 - A2*B1
+//     if(det == 0){
+//         //Lines are parallel
+//     }else{
+//         double x = (B2*C1 - B1*C2)/det
+//         double y = (A1*C2 - A2*C1)/det
+//     }
+// }
 
 grad_t get_pix_gradient(image_u32_t* im, int x, int y)
 {
@@ -329,19 +390,18 @@ uint32_t mag_to_gray(g_node_t* n, int add)
     double mag = sqrt(n->grad.x*n->grad.x + n->grad.y*n->grad.y);
 
     // normalize to 0xff or 255
-    int brightness = (mag/add) * 255;
+    int brightness = (mag*255) / 625;
     // assert(brightness < 256);
 
     uint32_t color = 0xff000000;
-    color += brightness << 16;
-    color += brightness << 8;
-    color += brightness;
-    // printf("brightness:%d  ,  mag:(%lf, %lf)  %lf\n", brightness, n->grad.x, n->grad.y, mag);
-
-    if(n->grad.x > 20)
-    {
-        int i = 0;
-    }
+    color += (brightness &0xFF) << 16;
+    color += (brightness &0xFF) << 8;
+    color += (brightness &0xFF);
+    // if(mag > 0) {
+    //     printf("color:%x  ,  mag:(%lf, %lf)  loc:(%d, %d) \n", 
+    //             color, n->grad.x, n->grad.y, n->loc.x, n->loc.y);
+    // }
+    
     return(color);
 }
 
@@ -359,10 +419,42 @@ void convert_to_grad_image(image_u32_t* im, int add)
             zhash_get(node_map, &idx, &tmp);
     
             im->buf[idx] = mag_to_gray(tmp, add);
+            // printf("(%d, %d)   val:%x\n", x, y, mag_to_gray(tmp, add));
             free(tmp);
         }
     }  
     // zhash_vmap_keys(node_map, free);
+    zhash_destroy(node_map);
+}
+
+uint32_t grad_dir_to_color(g_node_t* n)
+{
+    // convert from -PI -> PI   to   0 -> 360 degrees 
+    double angle = atan2(n->grad.y, n->grad.x);
+    double mag = sqrt(n->grad.x*n->grad.x + n->grad.y*n->grad.y);
+    if(mag < MINMAGTOPLOT)
+        return(0xFFFFFFFF);
+    angle += PI;
+    angle *= 180/PI;
+    hsv_t hsv = {angle, 1,1};
+    return(hsv_to_rgb(hsv));
+}
+
+void convert_to_grad_dir_image(image_u32_t* im, int bright)
+{
+    zhash_t* node_map = build_gradient_image(im);
+
+    for(int y = 0; y < (im->height-1); y++) {
+        for(int x = 0; x < (im->width-1); x++) {
+            int idx = y * im->stride + x;
+
+            g_node_t* tmp;
+            zhash_get(node_map, &idx, &tmp);
+    
+            im->buf[idx] = grad_dir_to_color(tmp);
+            free(tmp);
+        }
+    }  
     zhash_destroy(node_map);
 }
 
@@ -379,6 +471,7 @@ int zero_grad(grad_t g)
 zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
 {
     zhash_t* node_map = build_gradient_image(im);
+    // printf("\n\n\n");
 
     for(int y = 0; y < (im->height-1); y++) {
         for(int x = 0; x < (im->width-1); x++) {
@@ -387,7 +480,6 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
             g_node_t* tmp_n;
             g_node_t* curr_n;
             zhash_get(node_map, &idx, &curr_n);
-
             // TODO: may need to check more areas
             // check left 
             if(x > 0) {
@@ -396,7 +488,7 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
                     assert(0);
                 if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
                                 < thresh.max_grad_diff ) {
-                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+                    // printf("L curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
                     //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
                     //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
                     //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
@@ -411,7 +503,7 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
                 zhash_get(node_map, &tmp_idx, &tmp_n);
                 if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
                                 < thresh.max_grad_diff) {
-                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+                    // printf("B curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
                     //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
                     //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
                     //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
@@ -466,6 +558,7 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
             // }   
         }
     }
+    // printf("\n\n\n");
     return(node_map);
 }
 
@@ -505,43 +598,63 @@ line_t build_line(image_u32_t* im, zarray_t* node_arr)
     line_t l = {{-1,-1}, {-1,-1}};
     int n = zarray_size(node_arr);
     g_node_t* node;
-    double Sx=0, Sxx=0, Sxy=0, Sy=0, Syy=0;
+    // double Sx=0, Sxx=0, Sxy=0, Sy=0, Syy=0;
+    double Sx=0, Stt=0, Sts=0, Sy=0;
+
     double m, b;
 
-    for(int i = 0; i < n; i++)
+    for (int i = 0; i < n; ++i)
     {
         zarray_get(node_arr, i, &node);
         Sx += node->loc.x;
-        Sxx += node->loc.x * node->loc.x;
-        Sxy += node->loc.y * node->loc.x;
         Sy += node->loc.y;
-        Syy += node->loc.y * node->loc.y;
     }
-    m = (n*Sxy - Sx*Sy) / (n*Sxx - Sx*Sx);
-    b = (Sy/n) - (m/n)*Sx;
+    for (int i = 0; i < n; ++i)
+    {
+        zarray_get(node_arr, i, &node);
+        double t = node->loc.x - Sx/n;
+        Stt += t*t;
+        Sts += t*node->loc.y;
+    }
+    m = Sts/Stt;
+    b = (Sy - Sx*m)/n;
+
+    // for(int i = 0; i < n; i++)
+    // {
+    //     zarray_get(node_arr, i, &node);
+    //     Sx += node->loc.x;
+    //     Sxx += node->loc.x * node->loc.x;
+    //     Sxy += node->loc.y * node->loc.x;
+    //     Sy += node->loc.y;
+    //     Syy += node->loc.y * node->loc.y;
+    // }
+    // m = (n*Sxy - Sx*Sy) / (n*Sxx - Sx*Sx);
+    // b = (Sy/n) - (m/n)*Sx;
 
     double largest_dist = INT_MIN;
     loc_t largest_loc = {-1, -1};
     double smallest_dist = INT_MAX;
     loc_t smallest_loc = {-1, -1};
 
-    // printf("num nodes: %d\n", n);
+    // loc_t find_line_intersect(y, m);
+
+    // find point on line to compare every node to, simple solution = set x = im->width/2
+    loc_t Q = {im->width/2, m*im->width/2 + b};
+    // get line unit vector,  y=mx+b  --> vector = (1,m)
+    double mag = sqrt(1 + m*m);
+    vec_t u = {1/mag, m/mag};
+    // assert(sqrt((u.x*u.x) + (u.y*u.y)) == 1);       // length of u should be 1
+    printf("\nunit vec:(%lf(%lf), %lf)  Point(%d, %d)\n", u.x, 1/mag, u.y, Q.x, Q.y);
     for(int i = 0; i < n; i++)
     {
         zarray_get(node_arr, i, &node);
-        // find point on line to compare every node to, simple solution = set x = im->width/2
-        loc_t Q = {im->width/2, m*im->width/2 + b};
-
-        // get line unit vector,  y=mx+b  --> vector = (1,m)
-        double mag = sqrt(1 + m*m);
-        vec_t u = {1/mag, m/mag};
-        // assert(sqrt((u.x*u.x) + (u.y*u.y)) == 1);       // length of u should be 1
 
         // find the projection of point onto line
         vec_t QP = {Q.x - node->loc.x, Q.y - node->loc.y};
         double dist = u.x * QP.x  +  u.y * QP.y; 
 
-        // printf("small: %lf  ,  larg: %lf ,  dist: %lf\n", smallest_dist, largest_dist, dist);
+        printf("dist:%lf  small:%lf  larg:%lf   QP:(%lf, %lf)  loc:(%d, %d) \n", 
+               dist, smallest_dist, largest_dist, QP.x, QP.y, node->loc.x, node->loc.y);
         if(dist < smallest_dist) {
             smallest_dist = dist;
             smallest_loc.x = node->loc.x;
@@ -563,6 +676,10 @@ line_t build_line(image_u32_t* im, zarray_t* node_arr)
 
     if((smallest_loc.x <= 3 && smallest_loc.y <= 3)||
         (largest_loc.x <= 3 && largest_loc.y <= 3))
+    {
+        int i = 0;
+    }
+    if(fabs(m) < .005)
     {
         int i = 0;
     }
@@ -606,12 +723,6 @@ int right_color(image_u32_t* im, hsv_t color, hsv_t max_error, line_t* l)
                 hsv_t hsv;
                 double hsv2[3];
                 rgb_to_hsv(im->buf[idx_to_checkS[i]], &hsv);
-                abgr_to_hsv(im->buf[idx_to_checkS[i]], hsv2);
-                // printf("base:(%lf, %lf, %lf)  comp:(%lf, %lf, %lf) , other:(%lf, %lf, %lf)  i:%d,  abgr:%x\n", 
-                //         color.hue, color.sat, color.val, 
-                //         hsv.hue, hsv.sat, hsv.val, 
-                //         hsv2[0], hsv2[1], hsv2[2],
-                        // i, im->buf[idx_to_checkS[i]]);
                 return(1);
             }
         }
@@ -646,15 +757,15 @@ void color_blob_image(image_u32_t* im, zarray_t* arr)
 {
     g_node_t* n;
     zarray_get(arr, 0, &n);
-    uint32_t color = 0xFF000000 | (n->parent_id & 0xFF);
-
+    srand(n->parent_id);
+    uint32_t color = 0xFF000000 | (rand() & 0xFFFFFF);
     for(int i = 0; i < zarray_size(arr); i++)
     {
-        zarray_get(arr, 0, &n);
+        zarray_get(arr, i, &n);
         int x = n->id % im->stride;
         int y = n->id / im->stride;
-        int adj_y = abs(y-im->height);
-        im->buf[adj_y*im->stride + x] = color;
+        // printf("pix: (%d, %d)     color:%x\n", x, adj_y, color);
+        im->buf[y*im->stride + x] = color;
     }
 }
 

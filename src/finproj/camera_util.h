@@ -4,7 +4,8 @@
 #include "custom_util.h" 
 #include "math.h"
 
-#define MAXDOT 10       // arbirtrarly high number, atan2 cannot return > PI
+#define MAXDOT 180       // the oposite pointing direction 
+#define MINMAGTOPLOT 20
 #define PI 3.1415925
 #define MIN3(x,y,z)  ((y) <= (z) ? \
                          ((x) <= (y) ? (x) : (y)) \
@@ -51,10 +52,10 @@ struct g_node
 typedef struct abgr abgr_t;
 struct abgr
 {
-    int a;
-    int b;
-    int g;
-    int r;
+    uint8_t a;
+    uint8_t b;
+    uint8_t g;
+    uint8_t r;
 };
 
 typedef struct pixel pixel_t;
@@ -91,7 +92,11 @@ struct threshold_metric
 };
 
 
-void convert_to_grad_image(image_u32_t* im, int add);
+void flip_image(image_u32_t* im, image_u32_t* flipped);
+
+void convert_to_grad_image(image_u32_t* im, int bright);
+
+void convert_to_grad_dir_image(image_u32_t* im, int bright); 
 
 void capture_image(image_u32_t *im, int num);
 
@@ -126,6 +131,7 @@ void undistort_testing(image_u32_t* distort_im, image_u32_t* restor_im,
                      double b, double c, double sat_change);
 
 void rgb_to_hsv(uint32_t abgr, hsv_t* hsv);
+uint32_t hsv_to_rgb(hsv_t hsv);
 
 int changeSaturation(int abgr, double change);
 

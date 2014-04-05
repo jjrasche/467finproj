@@ -1,3 +1,12 @@
+/*      Areas I got stuck
+problem: lines were not printing
+    what was happening: was changing colors based on modding the values in a 
+    float[4] the last value represents transparency, and I set it to 0 every 16 
+    iterations.
+Solution: mod 3 instead of 4 on indexing into the color array
+
+*/
+
 #include "custom_util.h" 
 #include "math.h"   
 #include "camera_util.h"
@@ -5,7 +14,7 @@
 
 
 char* matrix_format = "%15.5f";
-char image_name[100] = "/home/jjrasche/finalProject/src/finproj/line.pnm";
+char image_name[100] = "/home/jjrasche/finalProject/src/finproj/line2.pnm";
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -33,6 +42,7 @@ struct state
     int take_image;
     int static_image;
     int grad_image;
+    int grad_dir_image;
     int brightness;
     int add_lines;
     int zoom;
@@ -152,12 +162,22 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     }   
     if (!strcmp("take_image", name)) {
         state->take_image = pg_gb(pg,name);
+        printf("pushed take_image button\n");
     }   
     if (!strcmp("seg_image", name)) {
+        int tmp = state->segment_image;
         state->segment_image = pg_gb(pg,name);
+        printf("segment_image: old:%d, new:%d\n", tmp, state->segment_image);
     }   
     if (!strcmp("show_pix", name)) {
+        int tmp = state->show_pix;
         state->show_pix = pg_gb(pg,name);
+        printf("show_pix: old:%d, new:%d\n", tmp, state->show_pix);    
+    }   
+    if (!strcmp("grad_dir_image", name)) {
+        int tmp = state->grad_dir_image;
+        state->grad_dir_image = pg_gb(pg,name);
+        printf("grad_dir_image: old:%d, new:%d\n", tmp, state->grad_dir_image); 
     }   
 
     pthread_mutex_unlock(&mutex);
@@ -198,13 +218,16 @@ void* render_loop(void *data)
             }
             else {
                 image_u32_t *im;
-                // if(static_image == 1) {
-                im = image_u32_create_from_pnm(image_name);
-                // }
-                // else {
-                //     im = image_convert_u32(frmd);
-                // }
+                if(static_image == 1) {
+                    im = image_u32_create_from_pnm(image_name);
+                }
+                else {
+                    im = image_convert_u32(frmd);
+                }
                 if (im != NULL) {
+                    image_u32_t* flipped = image_u32_create(im->width, im->height);
+                    flip_image(im, flipped);
+
                     pthread_mutex_lock(&mutex);
                     double max_grad_diff = state->max_grad_diff;
                     int min_size = state->min_size;
@@ -212,6 +235,7 @@ void* render_loop(void *data)
                     int add_lines = state->add_lines;
                     int take_pic = state->take_image;
                     int set_grad_image = state->grad_image;
+                    int set_dir_grad_image = state->grad_dir_image;
                     hsv_t max_hsv_diff = state->target_error;
                     hsv_t hsv = state->target_hsv;
                     static_image = state->static_image;
@@ -221,32 +245,30 @@ void* render_loop(void *data)
                     int show_pix = state->show_pix;
                     pthread_mutex_unlock(&mutex);
 
-                    if(set_grad_image == 1) {              
-                        convert_to_grad_image(im, brightness);
-                    }
-
                     threshold_metrics_t thresh = {hsv, max_hsv_diff,max_grad_diff, 
                                                     min_size, min_mag};
-                    image_u32_t* seg_image = image_u32_create(im->width, im->height);
-                    zarray_t* lines = form_lines(im, thresh, seg_image);
+                    zarray_t* lines = form_lines(flipped, thresh, NULL);
 
-                    // if segmentation image on, overlay the original image
-                    if(seg == 1) {
-                        vx_object_t *seg_obj = vxo_image_from_u32(seg_image, VXO_IMAGE_FLIPY, 
-                                                        VX_TEX_MIN_FILTER | VX_TEX_MAG_FILTER);
-                        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, seg_obj));
+                    if(set_grad_image == 1) {              
+                        convert_to_grad_image(flipped, brightness);
+                        vx_object_t *grad_obj = vxo_image_from_u32(flipped, 0, 0);
+                        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, grad_obj));
+                    }
+                    else if(set_dir_grad_image == 1) {
+                       convert_to_grad_dir_image(flipped, brightness); 
+                       vx_object_t *dir_grad_obj = vxo_image_from_u32(flipped, 0, 0);
+                       vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, dir_grad_obj));
                     }
                     else {
-                                                //TODO: how to scale an image in pix_coords
-                        vx_object_t *vim = vxo_image_from_u32(im, VXO_IMAGE_FLIPY, 
-                                            VX_TEX_MIN_FILTER | VX_TEX_MAG_FILTER);
+                        vx_object_t *vim = vxo_image_from_u32(flipped, 0, 0);
                         vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
                     }
 
 
                     int num_lines = zarray_size(lines);
                     printf("num_lines = %d \n", num_lines);   
-                    
+                    float color[4] = {0.3f, 0.6f, 0.9f, 1.0f};
+                    double change = 0.3;
                     int npoints = num_lines * 2;
                     float points[npoints*3];
                     if(num_lines != 0) {
@@ -255,25 +277,31 @@ void* render_loop(void *data)
                             line_t l;
                             zarray_get(lines, i, &l);
                             points[6*i + 0] = l.start.x;
-                            points[6*i + 1] = abs(l.start.y - im->height);
+                            points[6*i + 1] = l.start.y;
                             points[6*i + 2] = 1;
                             points[6*i + 3] = l.end.x;
-                            points[6*i + 4] = abs(l.end.y - im->height);
+                            points[6*i + 4] = l.end.y;
                             points[6*i + 5] = 1;
+                            // printf("line:%d start:(%d, %d)  end:(%d, %d) \n", 
+                            //         i, l.start.x, l.start.y, l.end.x, l.end.y);
 
                             if(show_pix) {
-                                // print points for every pixel on line
+
+                                if((color[i%3] + change) > 1) color[i%3] = 0;
+                                else color[i%3]+= change;
+
                                 for(int j = 0; j < zarray_size(l.nodes); j++)
                                 {
                                     g_node_t* node;
                                     zarray_get(l.nodes, j, &node);
                                     vx_buffer_add_back(buf,
                                         vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                                            vxo_chain(vxo_mat_translate3(node->loc.x, 
-                                                                    abs(node->loc.y - im->height), 1),
+                                            vxo_chain(vxo_mat_translate3(node->loc.x, node->loc.y, 1),
                                                         vxo_mat_scale(1.0f),
-                                                        vxo_circle(vxo_mesh_style(vx_yellow)))));
-                                    // printf("grad: (%lf, %lf) \n", node->grad.x, node->grad.y);
+                                                        vxo_circle(vxo_mesh_style(color)))));
+                                    // printf("num:%d   loc:(%d, %d)  grad:(%lf, %lf)  color:(%f, %f, %f, %f)\n", i, 
+                                    //         node->loc.x, node->loc.y, node->grad.x, node->grad.y,
+                                    //         color[0], color[1], color[2], color[3]);
                                 }
                             }
                             zarray_vmap(l.nodes, free);
@@ -286,8 +314,31 @@ void* render_loop(void *data)
                         vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
                         vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
                                                         vxo_lines(verts, npoints, GL_LINES, 
-                                                            vxo_points_style(vx_green, 2.0f))));
+                                                            vxo_points_style(vx_blue, 2.0f))));
                     }
+
+                    // add indicator lines as a legend for coordinate system
+                    int close = 40;
+                    vx_buffer_add_back(buf,
+                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                            vxo_chain(vxo_mat_translate3(close, close, 1),
+                                        vxo_mat_scale(3.0f),
+                                        vxo_circle(vxo_mesh_style(vx_red)))));
+                    vx_buffer_add_back(buf,
+                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                            vxo_chain(vxo_mat_translate3(close, (flipped->height - close), 1),
+                                        vxo_mat_scale(3.0f),
+                                        vxo_circle(vxo_mesh_style(vx_green)))));
+                    vx_buffer_add_back(buf,
+                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                            vxo_chain(vxo_mat_translate3((flipped->width - close), (flipped->height - close), 1),
+                                        vxo_mat_scale(3.0f),
+                                        vxo_circle(vxo_mesh_style(vx_blue)))));
+                    vx_buffer_add_back(buf,
+                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                            vxo_chain(vxo_mat_translate3(260, 215, 1),
+                                        vxo_mat_scale(1.0f),
+                                        vxo_circle(vxo_mesh_style(vx_blue)))));
                     if(take_pic == 1) {
                         pthread_mutex_lock(&mutex);
                         capture_image(im, 0);
@@ -296,7 +347,7 @@ void* render_loop(void *data)
                     }
 
                     image_u32_destroy(im);
-                    image_u32_destroy(seg_image);
+                    image_u32_destroy(flipped);
                     zarray_destroy(lines);
                 }
             }
@@ -306,9 +357,6 @@ void* render_loop(void *data)
         isrc->release_frame(isrc, frmd);
         pthread_mutex_lock(&mutex);
     }
-
-
-
     return NULL;
 }
 
@@ -408,26 +456,27 @@ int main(int argc, char **argv)
     // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
     // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
     // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
-   pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
+   // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
     state->static_image = 1;
     state->take_image = 0;
-    state->min_size = 2;
-    state->max_grad_diff = .95;
+    state->grad_dir_image = 0;
+    state->min_size = 10;
+    state->max_grad_diff = 10;        // in degrees
     state->brightness = 100;
     state->min_mag = 20; 
     pg_add_int_slider(pg, "brightness", "Bright", 50, 800, state->brightness);
     pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
-    pg_add_double_slider(pg, "grad_error", "Error", 0, 2, state->max_grad_diff);
+    pg_add_double_slider(pg, "grad_error", "Error", 0, 45, state->max_grad_diff);
     pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 700, state->min_mag);
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 
-                        "grad_image", "Show Grad Image", 0,
-                        "static_image", "Static Image", 0,
+                        "grad_image", "Show Grad", 0,
+                        "grad_dir_image", "Show Grad Direction", 0,
+                        "static_image", "Static Image", 1,
                         "take_image", "Take Image", 0,
-                        "seg_image", "Segmentation Image", 0,
+                        // "seg_image", "Segmentation Image", 0,
                         "show_pix", "Show Pixels", 0,
-
                                             NULL);
 
     int pg_add_check_boxes(parameter_gui_t *pg, const char *name, const char * desc, int is_checked, ...) __attribute__((sentinel));
@@ -455,3 +504,44 @@ int main(int argc, char **argv)
     vx_global_destroy();
     getopt_destroy(state->gopt);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// hsv -> rgb tester
+    // double hue, sat, val;
+    // while(1){
+    //     printf("enter hue:\n");
+    //     scanf("%lf", &hue);
+    //     printf("enter sat:\n");
+    //     scanf("%lf", &sat);
+    //     printf("enter val:\n");
+    //     scanf("%lf", &val);
+    //     hsv_t temp = {hue, sat, val};
+    //     uint32_t b =  hsv_to_rgb(temp);
+    //     printf("hsv: (%lf, %lf, %lf)\n", hue, sat, val);
+    // }
