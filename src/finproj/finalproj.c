@@ -1,9 +1,25 @@
 /*      Areas I got stuck
-problem: lines were not printing
-    what was happening: was changing colors based on modding the values in a 
-    float[4] the last value represents transparency, and I set it to 0 every 16 
-    iterations.
-Solution: mod 3 instead of 4 on indexing into the color array
+Problem:    lines were not printing
+            what was happening: was changing colors based on modding the values in a 
+            float[4] the last value represents transparency, and I set it to 0 every 16 
+            iterations.
+Solution:   mod 3 instead of 4 on indexing into the color array
+
+
+Problem:    vertical lines on "box" test image where not showing up
+            The gradient blobs were being created, but the algorithm to form
+            the line was finding the slope of most vertical lines to be 0
+Solution:   The root problem here was I was trying to get precision by subtracting
+            large numbers, I changed the formula and while the slope was 
+            infintesimally small, it was not 0 and true endpoints of the line were found
+
+
+Problem:    zarray_get was asserting that I was past the last element in array
+            when I was not
+Solution:   I allocated a zarray of the wrong size (ball_pos_t) and was filling
+            it with loc_t which were of different size and overwritting my stack
+            I found this out by seeing that my state variable location was being
+            overwritten
 
 */
 
@@ -14,7 +30,7 @@ Solution: mod 3 instead of 4 on indexing into the color array
 
 
 char* matrix_format = "%15.5f";
-char image_name[100] = "/home/jjrasche/finalProject/src/finproj/line2.pnm";
+char image_name[100] = "/home/jjrasche/finalProject/src/finproj/pic0.pnm";
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -143,6 +159,10 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("brightness", name)) {
         state->brightness = pg_gi(pg,name);
     }    
+    if (!strcmp("min_mag", name)) {
+        state->min_mag = pg_gd(pg,name);
+    }    
+
     if (!strcmp("zoom", name)) {
         state->zoom = pg_gi(pg,name);
     }    
@@ -316,29 +336,6 @@ void* render_loop(void *data)
                                                         vxo_lines(verts, npoints, GL_LINES, 
                                                             vxo_points_style(vx_blue, 2.0f))));
                     }
-
-                    // add indicator lines as a legend for coordinate system
-                    int close = 40;
-                    vx_buffer_add_back(buf,
-                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                            vxo_chain(vxo_mat_translate3(close, close, 1),
-                                        vxo_mat_scale(3.0f),
-                                        vxo_circle(vxo_mesh_style(vx_red)))));
-                    vx_buffer_add_back(buf,
-                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                            vxo_chain(vxo_mat_translate3(close, (flipped->height - close), 1),
-                                        vxo_mat_scale(3.0f),
-                                        vxo_circle(vxo_mesh_style(vx_green)))));
-                    vx_buffer_add_back(buf,
-                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                            vxo_chain(vxo_mat_translate3((flipped->width - close), (flipped->height - close), 1),
-                                        vxo_mat_scale(3.0f),
-                                        vxo_circle(vxo_mesh_style(vx_blue)))));
-                    vx_buffer_add_back(buf,
-                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                            vxo_chain(vxo_mat_translate3(260, 215, 1),
-                                        vxo_mat_scale(1.0f),
-                                        vxo_circle(vxo_mesh_style(vx_blue)))));
                     if(take_pic == 1) {
                         pthread_mutex_lock(&mutex);
                         capture_image(im, 0);
@@ -443,31 +440,30 @@ int main(int argc, char **argv)
     vx_remote_display_source_t *cxn = vx_remote_display_source_create(&state->vxapp);
     parameter_gui_t *pg = pg_create();
 
-    state->target_error.hue = 3;
-    state->target_error.sat = .125;
-    state->target_error.val = .125;
-    state->target_hsv.hue = 189.5;
-    state->target_hsv.sat = 0.3;
-    state->target_hsv.val = 0.8;
-    state->zoom = 1;
+    state->target_error.hue = 45;
+    state->target_error.sat = .113;
+    state->target_error.val = .25;
+    state->target_hsv.hue = 171.5;
+    state->target_hsv.sat = 0.148;
+    state->target_hsv.val = 0.6;
     pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
     pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
-    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
-    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
-    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
-    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
+    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
+    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
+    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
+    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
     state->static_image = 1;
     state->take_image = 0;
     state->grad_dir_image = 0;
-    state->min_size = 10;
-    state->max_grad_diff = 10;        // in degrees
+    state->min_size = 29;
+    state->max_grad_diff = 13.34;        // in degrees
     state->brightness = 100;
-    state->min_mag = 20; 
+    state->min_mag = 15.4; 
     pg_add_int_slider(pg, "brightness", "Bright", 50, 800, state->brightness);
     pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
-    pg_add_double_slider(pg, "grad_error", "Error", 0, 45, state->max_grad_diff);
+    pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 90, state->max_grad_diff);
     pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 700, state->min_mag);
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 

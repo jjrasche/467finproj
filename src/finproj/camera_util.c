@@ -29,6 +29,129 @@ void capture_image(image_u32_t *im, int num)
 
 }
 
+node_t* resolve_r(node_t* n) {
+    if(n->parent_id == n->id) return n;
+
+    n->parent_node = resolve_r(n->parent_node);
+    n->parent_id = n->parent_node->id;
+    return n->parent_node;
+}
+
+// if two nodes have conflicting parents, choose 1 parent to make overall parent
+static void connect(node_t* n1, node_t* n2) {
+    node_t* n1_parent = resolve_r(n1);          
+    node_t* n2_parent = resolve_r(n2);
+
+    n1_parent->parent_node = n2_parent;
+    n1_parent->parent_id = n2_parent->id;       //n2 becomes parent of n1
+    // n1's child nodes, are not changed to n2
+}
+
+void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met, zarray_t* blobs_out)
+{
+    assert(frame.xy0.x < frame.xy1.x && frame.xy0.y < frame.xy1.y);
+    assert(frame.xy0.x >= 0 && frame.xy0.y >= 0 && frame.xy1.x < im->width && frame.xy1.y < im->height);
+    assert(frame.ex0.x < frame.ex1.x && frame.ex0.y < frame.ex1.y);
+    assert(frame.ex0.x >= 0 && frame.ex0.y >= 0 && frame.ex1.x < im->width && frame.ex1.y < im->height);
+
+    // Int to node
+    zhash_t* node_map = zhash_create(sizeof(uint32_t), sizeof(node_t*),
+            zhash_uint32_hash, zhash_uint32_equals);
+
+    for(int i = frame.xy0.y; i < frame.xy1.y; i++) {
+        for(int j = frame.xy0.x; j < frame.xy1.x; j++) {
+            if((i < frame.ex0.y || i > frame.ex1.y) || (j < frame.ex0.x || j > frame.ex1.x)) {
+
+                uint32_t idx_im = i * im->stride + j; // Indframe.ex relative to image
+
+                // Pixel color data
+                uint32_t abgr = im->buf[idx_im];
+                hsv_t hsv = {0,0,0};
+                rgb_to_hsv(abgr, &hsv);
+                hsv_t error = {fabs(hsv.hue - met.hsv.hue), 
+                                fabs(hsv.sat - met.hsv.sat), 
+                                fabs(hsv.val - met.hsv.val)};
+
+                // 'Acceptable'
+                 if((error.hue < met.error.hue) && 
+                    (error.sat < met.error.sat) && 
+                    (error.val < met.error.val)) 
+                 {
+                    // Create new node, set itself up as a parent
+                    node_t* n = calloc(1, sizeof(node_t));
+                    n->id = idx_im;
+                    n->parent_id = idx_im;
+                    n->parent_node = n;
+                    n->num_children = 0;
+
+                    node_t* tmp_node;
+                    uint32_t tmp_idx;
+
+                    // Add node to node map
+                    if(zhash_put(node_map, &idx_im, &n, &tmp_idx, &tmp_node)==1) 
+                    {
+                        assert(0);
+                    }
+
+                    //Check if apart of another blob, or starting a new blob 
+                    // if apart of another, point to the parent, if a new blob, point to self 
+                    //Check neighbours
+                    if(!met.lines) {    // only check this if don't want lines for tape detection
+                        if(j > frame.xy0.x) {
+                            tmp_idx = idx_im - 1; // is Left neighbour similar color 
+                            if(zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
+                                node_t* neighbour = tmp_node;
+                                connect(n, neighbour);                    
+                            }
+                        }
+                    }
+                    if(i > frame.xy0.y) { 
+                        tmp_idx = idx_im - im->stride; // is Bottom neighbor similar color
+                        if(tmp_idx > 0 && zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
+                            node_t* neighbour = tmp_node;
+                            connect(neighbour,n);                    
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    //count number of children for each parent, go through node_map
+    // if a node is not a parent, add 1 to it's parent->num_children and delete from hash
+    // if is a parent do nothing
+    zarray_t* vals = zhash_values(node_map);
+    for(int i = 0; i < zarray_size(vals); i++) {
+        node_t* node;
+        zarray_get(vals, i, &node);
+        resolve_r(node);
+
+        if(node->parent_id != node->id) {
+            node->parent_node->num_children++;
+            // key should exist, if it doesn't find out why
+            assert(zhash_remove(node_map, &node->id, NULL, NULL));
+        }
+    }
+
+    // search parent only hash and add to blobs out conditionally
+    vals = zhash_values(node_map);
+    for(int i = 0; i < zarray_size(vals); i++) {
+        node_t* node;
+        zarray_get(vals, i, &node);
+        if(node->num_children > met.min_size) {
+            loc_t pos;
+            pos.x = node->parent_id%im->stride;
+            pos.y = node->parent_id/im->stride;
+            zarray_add(blobs_out, &pos);
+            // printf("parent %d\n", node->id);
+        }
+    }
+    zarray_destroy(vals);
+    zhash_vmap_values(node_map, free);
+    zhash_destroy(node_map);
+}
+
 // return int with average RGB values
 int average_surrounding_pixels(image_u32_t* image, int x, int y) {
     int ave[3] = {0,0,0};
@@ -228,18 +351,18 @@ void flip_image(image_u32_t* im, image_u32_t* flipped)
     }
 }
 
-g_node_t* resolve_r(g_node_t* n) {
+g_node_t* resolve_g(g_node_t* n) {
     if(n->parent_id == n->id) return n;
 
-    n->parent_node = resolve_r(n->parent_node);
+    n->parent_node = resolve_g(n->parent_node);
     n->parent_id = n->parent_node->id;
     return n->parent_node;
 }
 
 // if two nodes have conflicting parents, choose 1 parent to make overall parent
-static void connect(g_node_t* n1, g_node_t* n2) {
-    g_node_t* n1_parent = resolve_r(n1);          
-    g_node_t* n2_parent = resolve_r(n2);
+static void connect_g(g_node_t* n1, g_node_t* n2) {
+    g_node_t* n1_parent = resolve_g(n1);          
+    g_node_t* n2_parent = resolve_g(n2);
 
     n1_parent->parent_node = n2_parent;
     n1_parent->parent_id = n2_parent->id;       //n2 becomes parent of n1
@@ -323,17 +446,17 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         curr_pix.grad.y += (-1)*diff;
     }
 
-    // // add gradient from bottom-left
-    // if(x > 0 && y > 0) {
-    //     int bl_buf = im->buf[idx - 1 - im->stride];
-    //     abgr_t bl_color = {(bl_buf >> 24) & 0xff, (bl_buf >> 16) & 0xff, 
-    //                             (bl_buf >> 8) & 0xff, (bl_buf) & 0xff};    
-    //     double diff = compare_pix(bl_color, curr_pix.abgr);
-    //     //TODO: think about the amount of weight the corner pix should get
-    //     // current thought is equal 
-    //     curr_pix.grad.x += (-1)*diff;
-    //     curr_pix.grad.y += (-1)*diff;
-    // }  
+    // add gradient from bottom-left
+    if(x > 0 && y > 0) {
+        int bl_buf = im->buf[idx - 1 - im->stride];
+        abgr_t bl_color = {(bl_buf >> 24) & 0xff, (bl_buf >> 16) & 0xff, 
+                                (bl_buf >> 8) & 0xff, (bl_buf) & 0xff};    
+        double diff = compare_pix(bl_color, curr_pix.abgr);
+        //TODO: think about the amount of weight the corner pix should get
+        // current thought is equal 
+        curr_pix.grad.x += (-1)*diff;
+        curr_pix.grad.y += (-1)*diff;
+    }  
 
     // // add gradient from right
     // if(x < (im->width-1)) {
@@ -494,7 +617,7 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
                     //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
                     if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
                         break;
-                    connect(curr_n, tmp_n);                    
+                    connect_g(curr_n, tmp_n);                    
                 }
             }
             // check bottom 
@@ -509,7 +632,7 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
                     //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
                     if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
                         break;
-                    connect(curr_n, tmp_n);  
+                    connect_g(curr_n, tmp_n);  
                 }                  
             }
             // // check bottom left 
@@ -524,36 +647,36 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
             //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
             //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
             //             break;
-            //         connect(curr_n, tmp_n);                    
+            //         connect_g(curr_n, tmp_n);                    
             //     }
             // }
-            // check right 
+            // // check right 
             // if(x < im->width-1) {
             //     int tmp_idx = idx + 1;
             //     if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
             //         assert(0);
-            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < max_grad_diff ) {
+            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < thresh.max_grad_diff ) {
             //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
             //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
             //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
             //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
             //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
             //             break;
-            //         connect(curr_n, tmp_n);                    
+            //         connect_g(tmp_n, curr_n);                    
             //     }
             // }
             // // check top
             // if(y < im->height-1) { 
             //     int tmp_idx = idx + im->stride; 
             //     zhash_get(node_map, &tmp_idx, &tmp_n);
-            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < max_grad_diff) {
+            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < thresh.max_grad_diff) {
             //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
             //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
             //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
             //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
             //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
             //             break;
-            //         connect(curr_n, tmp_n);  
+            //         connect_g(curr_n, tmp_n);  
             //     }                  
             // }   
         }
@@ -644,7 +767,7 @@ line_t build_line(image_u32_t* im, zarray_t* node_arr)
     double mag = sqrt(1 + m*m);
     vec_t u = {1/mag, m/mag};
     // assert(sqrt((u.x*u.x) + (u.y*u.y)) == 1);       // length of u should be 1
-    printf("\nunit vec:(%lf(%lf), %lf)  Point(%d, %d)\n", u.x, 1/mag, u.y, Q.x, Q.y);
+    // printf("\nunit vec:(%lf(%lf), %lf)  Point(%d, %d)\n", u.x, 1/mag, u.y, Q.x, Q.y);
     for(int i = 0; i < n; i++)
     {
         zarray_get(node_arr, i, &node);
@@ -653,8 +776,8 @@ line_t build_line(image_u32_t* im, zarray_t* node_arr)
         vec_t QP = {Q.x - node->loc.x, Q.y - node->loc.y};
         double dist = u.x * QP.x  +  u.y * QP.y; 
 
-        printf("dist:%lf  small:%lf  larg:%lf   QP:(%lf, %lf)  loc:(%d, %d) \n", 
-               dist, smallest_dist, largest_dist, QP.x, QP.y, node->loc.x, node->loc.y);
+        // printf("dist:%lf  small:%lf  larg:%lf   QP:(%lf, %lf)  loc:(%d, %d) \n", 
+        //        dist, smallest_dist, largest_dist, QP.x, QP.y, node->loc.x, node->loc.y);
         if(dist < smallest_dist) {
             smallest_dist = dist;
             smallest_loc.x = node->loc.x;

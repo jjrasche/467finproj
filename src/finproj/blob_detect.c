@@ -318,61 +318,54 @@ void find_diamonds_blob_detector(image_u32_t* im, float* xy0, float* xy1, float*
     }
 }
 
-void hsv_find_diamonds_blob_detector(image_u32_t* im, float* xy0, float* xy1, float* ex0, float* ex1,
-        double* hsv_in, double* max_error, zarray_t* blobs_out, int min_blob_size, int lines) 
+
+typedef struct frame frame_t;
+struct frame
 {
-    hsv_find_balls_blob_detector(im, xy0, xy1, ex0, ex1, hsv_in, max_error, blobs_out, min_blob_size, lines);
+  loc_t xy0;
+  loc_t xy1;
+  loc_t ex0;
+  loc_t ex1;
+};
 
-    // Check if there is a 'white' pixel after each blob, discard if not
-    int white_below_green = 10;
-    int white_error = 25;
-    int min_white = 0xe0;
-    for(int i = 0; i < zarray_size(blobs_out); i++) {
-
-        blob_detector_ballpos_t blob;
-        zarray_get(blobs_out, i, &blob);
-         if (blob.position[1] + white_below_green >= im->height) continue;
-
-        uint32_t abgr = im->buf[(int)((blob.position[1] + white_below_green) * im->stride + blob.position[0])];
-        int32_t r = (abgr >> 0) & 0xff;
-        int32_t g = (abgr >> 8) & 0xff;
-        int32_t b = (abgr >> 16) & 0xff;
-
-        int32_t avg = (r + g + b) / 3;
-
-        if(abs(r - avg) > white_error || abs(g - avg) > white_error || abs(b - avg) > white_error || avg < min_white) {
-            // printf("removing cause not white\n");
-            //zarray_remove_index(blobs_out, i--, 1);
-        }
-    }
-}
-
-void hsv_find_balls_blob_detector(image_u32_t* im, float* xy0, float* xy1, float* ex0, float* ex1,
-        double* hsv_in, double* max_error, zarray_t* blobs_out, int min_blob_size, int lines)
+typedef struct metric metric_t
+struct metric
 {
-    assert(xy0[0] < xy1[0] && xy0[1] < xy1[1]);
-    assert(xy0[0] >= 0 && xy0[1] >= 0 && xy1[0] < im->width && xy1[1] < im->height);
-    assert(ex0[0] < ex1[0] && ex0[1] < ex1[1]);
-    assert(ex0[0] >= 0 && ex0[1] >= 0 && ex1[0] < im->width && ex1[1] < im->height);
+  hsv_t hsv;
+  hsv_t error;
+  int min_size;
+  int lines;
+};
+
+
+void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t metric, zarray_t* blobs_out)
+{
+    assert(xy0[0] < frame.xy1[0] && frame.xy0[1] < frame.xy1[1]);
+    assert(frame.xy0[0] >= 0 && frame.xy0[1] >= 0 && frame.xy1[0] < im->width && frame.xy1[1] < im->height);
+    assert(frame.ex0[0] < frame.ex1[0] && frame.ex0[1] < frame.ex1[1]);
+    assert(frame.ex0[0] >= 0 && frame.ex0[1] >= 0 && frame.ex1[0] < im->width && frame.ex1[1] < im->height);
 
     // Int to node
     zhash_t* node_map = zhash_create(sizeof(uint32_t), sizeof(node_t*),
             zhash_uint32_hash, zhash_uint32_equals);
 
-    for(int i = xy0[1]; i < xy1[1]; i++) {
-        for(int j = xy0[0]; j < xy1[0]; j++) {
-            if((i < ex0[1] || i > ex1[1]) || (j < ex0[0] || j > ex1[0])) {
+    for(int i = frame.xy0[1]; i < frame.xy1[1]; i++) {
+        for(int j = frame.xy0[0]; j < frame.xy1[0]; j++) {
+            if((i < frame.ex0[1] || i > frame.ex1[1]) || (j < frame.ex0[0] || j > frame.ex1[0])) {
 
-                uint32_t idx_im = i * im->stride + j; // Index relative to image
+                uint32_t idx_im = i * im->stride + j; // Indframe.ex relative to image
 
                 // Pixel color data
                 uint32_t abgr = im->buf[idx_im];
-                double hsv[3];
+                hsv_t hsv = {0,0,0};
                 rgb_to_hsv(abgr, hsv);
-                double error[3] = {fabs(hsv[0] - hsv_in[0]), fabs(hsv[1] - hsv_in[1]), fabs(hsv[2] - hsv_in[2])};
+                hsv_t error = {fabs(hsv.hue - met.hsv.hue), 
+                                fabs(hsv.sat - met.hsv.sat), 
+                                fabs(hsv.val - met.hsv.val)};
 
                 // 'Acceptable'
-                 if(error[0] < max_error[0] && error[1] < max_error[1] && error[2] < max_error[2]) {
+                 if((error.hue < met.error.hue) && (error.sat < met.error.sat) && (error.val < met.error.val) 
+                 {
                     // Create new node, set itself up as a parent
                     node_t* n = calloc(1, sizeof(node_t));
                     n->id = idx_im;
@@ -393,7 +386,7 @@ void hsv_find_balls_blob_detector(image_u32_t* im, float* xy0, float* xy1, float
                     // if apart of another, point to the parent, if a new blob, point to self 
                     //Check neighbours
                     if(!lines) {    // only check this if don't want lines for tape detection
-                        if(j > xy0[0]) {
+                        if(j > frame.xy0[0]) {
                             tmp_idx = idx_im - 1; // is Left neighbour similar color 
                             if(zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
                                 node_t* neighbour = tmp_node;
@@ -401,7 +394,7 @@ void hsv_find_balls_blob_detector(image_u32_t* im, float* xy0, float* xy1, float
                             }
                         }
                     }
-                    if(i > xy0[1]) { 
+                    if(i > frame.xy0[1]) { 
                         tmp_idx = idx_im - im->stride; // is Bottom neighbor similar color
                         if(tmp_idx > 0 && zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
                             node_t* neighbour = tmp_node;

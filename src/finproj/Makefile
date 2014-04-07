@@ -4,10 +4,10 @@ include ../common.mk
 CFLAGS = $(CFLAGS_STD) $(CFLAGS_COMMON) $(CFLAGS_VX) $(CFLAGS_GTK) $(CFLAGS_LCMTYPES) $(CFLAGS_LCM) $(CFLAGS_VX) -fPIC -g
 LDFLAGS =  $(LDFLAGS_VX_GTK) $(LDFLAGS_VX) $(LDFLAGS_GTK) $(LDFLAGS_IMAGESOURCE) $(LDFLAGS_COMMON) $(LDFLAGS_LCMTYPES) $(LDFLAGS_LCM) $(LDFLAGS_STD)
 
-BINS= fin
-TESTS= map_test move_to_point_test pid_test
+BINS= fin distortion
+TESTS= map_test move_to_point_test pid_test 
 
-UTILS = custom_util.o camera_util.o 
+UTILS = custom_util.o camera_util.o homography_botlab.o
 
 all: $(BINS)
 
@@ -33,7 +33,7 @@ camera: camera_stuff.o custom_util.o blob_detect.o homography_botlab.o camera_ut
 	@echo "\t$@"
 	@$(CC) -o $@ $^ $(LDFLAGS)
 
-distortion: distortion_testing.o custom_util.o camera_util.o blob_detect.o homography_botlab.o
+distortion: distortion_testing.o custom_util.o camera_util.o homography_botlab.o
 	@echo "\t$@"
 	@$(CC) -o $@ $^ $(LDFLAGS)
 

@@ -1,0 +1,5 @@
+package blob_detector;
+
+struct ballpos_t {
+    double position[2];
+}

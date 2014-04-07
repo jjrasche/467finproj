@@ -91,6 +91,33 @@ struct threshold_metric
     double min_mag;
 };
 
+typedef struct frame frame_t;
+struct frame
+{
+  loc_t xy0;
+  loc_t xy1;
+  loc_t ex0;
+  loc_t ex1;
+};
+
+typedef struct metric metrics_t;
+struct metric
+{
+  hsv_t hsv;
+  hsv_t error;
+  int min_size;
+  int lines;
+};
+
+
+typedef struct node node_t;
+struct node {
+    uint32_t id;
+    uint32_t parent_id;
+    node_t *parent_node;
+    int num_children;
+};
+
 
 void flip_image(image_u32_t* im, image_u32_t* flipped);
 
@@ -99,6 +126,9 @@ void convert_to_grad_image(image_u32_t* im, int bright);
 void convert_to_grad_dir_image(image_u32_t* im, int bright); 
 
 void capture_image(image_u32_t *im, int num);
+
+void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, 
+                            metrics_t metric, zarray_t* blobs_out);
 
 void test_build_line();
 

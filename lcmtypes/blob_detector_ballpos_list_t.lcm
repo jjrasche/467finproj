@@ -1,0 +1,6 @@
+package blob_detector;
+
+struct ballpos_list_t {
+    int32_t len;
+    ballpos_t ballpos[len];
+}
