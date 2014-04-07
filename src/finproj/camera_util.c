@@ -428,6 +428,22 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
                             (abgr >> 8) & 0xff, (abgr) & 0xff}, {0, 0},
                             {-1, -1}};
 
+    // // add gradient from left
+    // if(x > 0) {
+    //     int left_buf = im->buf[idx - 1];
+    //     // int right_buf = im->buf[idx + 1];
+
+    //     curr_pix.grad.x = abgr - left_buf;
+    // }
+
+    // // add gradient from bottom
+    // if(y > 0) {
+    //     // int top_buf = im->buf[idx + im->stride];
+    //     int bottom_buf = im->buf[idx - im->stride];
+
+    //     curr_pix.grad.y = abgr - bottom_buf;
+    // }
+
     // add gradient from left
     if(x > 0) {
         int left_buf = im->buf[idx - 1];
@@ -447,16 +463,16 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
     }
 
     // add gradient from bottom-left
-    if(x > 0 && y > 0) {
-        int bl_buf = im->buf[idx - 1 - im->stride];
-        abgr_t bl_color = {(bl_buf >> 24) & 0xff, (bl_buf >> 16) & 0xff, 
-                                (bl_buf >> 8) & 0xff, (bl_buf) & 0xff};    
-        double diff = compare_pix(bl_color, curr_pix.abgr);
-        //TODO: think about the amount of weight the corner pix should get
-        // current thought is equal 
-        curr_pix.grad.x += (-1)*diff;
-        curr_pix.grad.y += (-1)*diff;
-    }  
+    // if(x > 0 && y > 0) {
+    //     int bl_buf = im->buf[idx - 1 - im->stride];
+    //     abgr_t bl_color = {(bl_buf >> 24) & 0xff, (bl_buf >> 16) & 0xff, 
+    //                             (bl_buf >> 8) & 0xff, (bl_buf) & 0xff};    
+    //     double diff = compare_pix(bl_color, curr_pix.abgr);
+    //     //TODO: think about the amount of weight the corner pix should get
+    //     // current thought is equal 
+    //     curr_pix.grad.x += (-1)*diff;
+    //     curr_pix.grad.y += (-1)*diff;
+    // }  
 
     // // add gradient from right
     // if(x < (im->width-1)) {
@@ -521,8 +537,8 @@ uint32_t mag_to_gray(g_node_t* n, int add)
     color += (brightness &0xFF) << 8;
     color += (brightness &0xFF);
     // if(mag > 0) {
-    //     printf("color:%x  ,  mag:(%lf, %lf)  loc:(%d, %d) \n", 
-    //             color, n->grad.x, n->grad.y, n->loc.x, n->loc.y);
+        // printf("color:%x  ,  mag:(%lf, %lf)  loc:(%d, %d) \n", 
+        //         color, n->grad.x, n->grad.y, n->loc.x, n->loc.y);
     // }
     
     return(color);
@@ -540,9 +556,12 @@ void convert_to_grad_image(image_u32_t* im, int add)
 
             g_node_t* tmp;
             zhash_get(node_map, &idx, &tmp);
-    
+            
+            uint32_t a = tmp->grad.x & 0xffffff;
+            uint32_t b = tmp->grad.y & 0xffffff;
+            uint32_t mag = sqrt((a*a)+(b*b));
             im->buf[idx] = mag_to_gray(tmp, add);
-            // printf("(%d, %d)   val:%x\n", x, y, mag_to_gray(tmp, add));
+            // printf("(%d, %d)  (%d, %d) val:%d\n", x, y, a, b, mag);
             free(tmp);
         }
     }  

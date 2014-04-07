@@ -20,8 +20,8 @@
 typedef struct grad grad_t;
 struct grad
 {
-    double x;
-    double y;
+    uint32_t x;
+    uint32_t y;
 };
 
 

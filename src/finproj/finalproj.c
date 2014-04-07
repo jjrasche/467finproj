@@ -347,6 +347,9 @@ void* render_loop(void *data)
                     image_u32_destroy(flipped);
                     zarray_destroy(lines);
                 }
+                else {
+                    printf("image is null\n");
+                }
             }
         }
         vx_buffer_swap(buf);        
