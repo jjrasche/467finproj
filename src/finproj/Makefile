@@ -1,13 +1,13 @@
 include ../common.mk
 
 # flags for building the gtk library
-CFLAGS = $(CFLAGS_STD) $(CFLAGS_COMMON) $(CFLAGS_VX) $(CFLAGS_GTK) $(CFLAGS_LCMTYPES) $(CFLAGS_LCM) $(CFLAGS_VX) -fPIC -g
+CFLAGS = $(CFLAGS_STD) $(CFLAGS_COMMON) $(CFLAGS_VX) $(CFLAGS_GTK) $(CFLAGS_LCMTYPES) $(CFLAGS_LCM) $(CFLAGS_VX) -fPIC -g -O0
 LDFLAGS =  $(LDFLAGS_VX_GTK) $(LDFLAGS_VX) $(LDFLAGS_GTK) $(LDFLAGS_IMAGESOURCE) $(LDFLAGS_COMMON) $(LDFLAGS_LCMTYPES) $(LDFLAGS_LCM) $(LDFLAGS_STD)
 
 BINS= fin distortion
 TESTS= map_test move_to_point_test pid_test 
 
-UTILS = custom_util.o camera_util.o homography_botlab.o
+UTILS = custom_util.o camera_util.o blob_util.o
 
 all: $(BINS)
 
@@ -33,7 +33,7 @@ camera: camera_stuff.o custom_util.o blob_detect.o homography_botlab.o camera_ut
 	@echo "\t$@"
 	@$(CC) -o $@ $^ $(LDFLAGS)
 
-distortion: distortion_testing.o custom_util.o camera_util.o homography_botlab.o
+distortion: distortion_testing.o $(UTILS)
 	@echo "\t$@"
 	@$(CC) -o $@ $^ $(LDFLAGS)
 

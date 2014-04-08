@@ -27,9 +27,8 @@ Solution:   I allocated a zarray of the wrong size (ball_pos_t) and was filling
 #include "math.h"   
 #include "camera_util.h"
 #include "homography_botlab.h"
+#include "blob_util.h"
 
-
-char* matrix_format = "%15.5f";
 char image_name[100] = "/home/jjrasche/finalProject/src/finproj/pic0.pnm";
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -48,6 +47,7 @@ struct state
     hsv_t target_error;
     hsv_t target_hsv;
     int min_size;
+    int blur_amount;
     double min_mag;
     double max_grad_diff;
     matd_t* homography_matrix;
@@ -64,6 +64,7 @@ struct state
     int zoom;
     int segment_image;
     int show_pix;
+    int show_homography;
 
     vx_world_t *world;  // Where vx objects are live
     vx_layer_t* layer;    
@@ -162,7 +163,9 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("min_mag", name)) {
         state->min_mag = pg_gd(pg,name);
     }    
-
+    if (!strcmp("blur_amount", name)) {
+        state->blur_amount = pg_gi(pg,name);
+    }
     if (!strcmp("zoom", name)) {
         state->zoom = pg_gi(pg,name);
     }    
@@ -199,6 +202,9 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
         state->grad_dir_image = pg_gb(pg,name);
         printf("grad_dir_image: old:%d, new:%d\n", tmp, state->grad_dir_image); 
     }   
+    if (!strcmp("show_homography", name)) {
+        state->show_homography = pg_gb(pg,name);
+    }   
 
     pthread_mutex_unlock(&mutex);
 }
@@ -228,7 +234,6 @@ void* render_loop(void *data)
 
     image_source_data_t* frmd = calloc(1, sizeof(image_source_data_t));;
     while(state->running) {
-        pthread_mutex_unlock(&mutex);
         
         // Get the most recent camera frame and render it to screen.
         if (isrc != NULL) {
@@ -245,10 +250,6 @@ void* render_loop(void *data)
                     im = image_convert_u32(frmd);
                 }
                 if (im != NULL) {
-                    image_u32_t* flipped = image_u32_create(im->width, im->height);
-                    flip_image(im, flipped);
-
-                    pthread_mutex_lock(&mutex);
                     double max_grad_diff = state->max_grad_diff;
                     int min_size = state->min_size;
                     int brightness = state->brightness;
@@ -263,7 +264,14 @@ void* render_loop(void *data)
                     int seg = state->segment_image;
                     double min_mag = state->min_mag;
                     int show_pix = state->show_pix;
+                    int homography = state->show_homography;
+                    int blur_amount = state->blur_amount;
                     pthread_mutex_unlock(&mutex);
+
+                    image_u32_t* flipped = image_u32_create(im->width, im->height);
+                    flip_image(im, flipped);
+                    flipped = blur_image(flipped, blur_amount); 
+
 
                     threshold_metrics_t thresh = {hsv, max_hsv_diff,max_grad_diff, 
                                                     min_size, min_mag};
@@ -275,7 +283,7 @@ void* render_loop(void *data)
                         vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, grad_obj));
                     }
                     else if(set_dir_grad_image == 1) {
-                       convert_to_grad_dir_image(flipped, brightness); 
+                       convert_to_grad_dir_image(flipped, brightness, min_mag); 
                        vx_object_t *dir_grad_obj = vxo_image_from_u32(flipped, 0, 0);
                        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, dir_grad_obj));
                     }
@@ -328,7 +336,6 @@ void* render_loop(void *data)
                             zarray_destroy(l.nodes);
                         }
                     }
-                    // usleep(3000000);
 
                     if(add_lines) {
                         vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
@@ -336,9 +343,13 @@ void* render_loop(void *data)
                                                         vxo_lines(verts, npoints, GL_LINES, 
                                                             vxo_points_style(vx_blue, 2.0f))));
                     }
+                    if(homography) {
+                        printf("in here\n");
+                        take_measurements(flipped, NULL);
+                    }
                     if(take_pic == 1) {
                         pthread_mutex_lock(&mutex);
-                        capture_image(im, 0);
+                        capture_image(flipped, 0);
                         state->take_image = 0;
                         pthread_mutex_unlock(&mutex);
                     }
@@ -449,25 +460,28 @@ int main(int argc, char **argv)
     state->target_hsv.hue = 171.5;
     state->target_hsv.sat = 0.148;
     state->target_hsv.val = 0.6;
-    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
-    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
-    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
-    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
-    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
-    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
+    // pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
+    // pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
+    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
+    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
+    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
+    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
     state->static_image = 1;
     state->take_image = 0;
     state->grad_dir_image = 0;
+    state->show_homography = 0;
     state->min_size = 29;
     state->max_grad_diff = 13.34;        // in degrees
-    state->brightness = 100;
+    state->brightness = 0;
     state->min_mag = 15.4; 
-    pg_add_int_slider(pg, "brightness", "Bright", 50, 800, state->brightness);
+    state->blur_amount = 1;
+    pg_add_int_slider(pg, "brightness", "Bright", 0, 50, state->brightness);
     pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
+    pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
     pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 90, state->max_grad_diff);
-    pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 700, state->min_mag);
+    pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 100, state->min_mag);
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 
                         "grad_image", "Show Grad", 0,
@@ -476,6 +490,7 @@ int main(int argc, char **argv)
                         "take_image", "Take Image", 0,
                         // "seg_image", "Segmentation Image", 0,
                         "show_pix", "Show Pixels", 0,
+                        "show_homography", "Show Homography", 0,
                                             NULL);
 
     int pg_add_check_boxes(parameter_gui_t *pg, const char *name, const char * desc, int is_checked, ...) __attribute__((sentinel));

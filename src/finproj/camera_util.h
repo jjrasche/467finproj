@@ -5,7 +5,7 @@
 #include "math.h"
 
 #define MAXDOT 180       // the oposite pointing direction 
-#define MINMAGTOPLOT 20
+#define MINMAGTOPLOT 10
 #define PI 3.1415925
 #define MIN3(x,y,z)  ((y) <= (z) ? \
                          ((x) <= (y) ? (x) : (y)) \
@@ -20,8 +20,8 @@
 typedef struct grad grad_t;
 struct grad
 {
-    uint32_t x;
-    uint32_t y;
+    double x;
+    double y;
 };
 
 
@@ -119,11 +119,14 @@ struct node {
 };
 
 
+
+image_u32_t* blur_image(image_u32_t* im, int num_passes);
+
 void flip_image(image_u32_t* im, image_u32_t* flipped);
 
 void convert_to_grad_image(image_u32_t* im, int bright);
 
-void convert_to_grad_dir_image(image_u32_t* im, int bright); 
+void convert_to_grad_dir_image(image_u32_t* im, int bright, double mag); 
 
 void capture_image(image_u32_t *im, int num);
 

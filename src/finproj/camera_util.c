@@ -26,130 +26,6 @@ void capture_image(image_u32_t *im, int num)
 
     int ret = image_u32_write_pnm(im, file_name);
     printf("take image %d, err = %d", num, ret);
-
-}
-
-node_t* resolve_r(node_t* n) {
-    if(n->parent_id == n->id) return n;
-
-    n->parent_node = resolve_r(n->parent_node);
-    n->parent_id = n->parent_node->id;
-    return n->parent_node;
-}
-
-// if two nodes have conflicting parents, choose 1 parent to make overall parent
-static void connect(node_t* n1, node_t* n2) {
-    node_t* n1_parent = resolve_r(n1);          
-    node_t* n2_parent = resolve_r(n2);
-
-    n1_parent->parent_node = n2_parent;
-    n1_parent->parent_id = n2_parent->id;       //n2 becomes parent of n1
-    // n1's child nodes, are not changed to n2
-}
-
-void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met, zarray_t* blobs_out)
-{
-    assert(frame.xy0.x < frame.xy1.x && frame.xy0.y < frame.xy1.y);
-    assert(frame.xy0.x >= 0 && frame.xy0.y >= 0 && frame.xy1.x < im->width && frame.xy1.y < im->height);
-    assert(frame.ex0.x < frame.ex1.x && frame.ex0.y < frame.ex1.y);
-    assert(frame.ex0.x >= 0 && frame.ex0.y >= 0 && frame.ex1.x < im->width && frame.ex1.y < im->height);
-
-    // Int to node
-    zhash_t* node_map = zhash_create(sizeof(uint32_t), sizeof(node_t*),
-            zhash_uint32_hash, zhash_uint32_equals);
-
-    for(int i = frame.xy0.y; i < frame.xy1.y; i++) {
-        for(int j = frame.xy0.x; j < frame.xy1.x; j++) {
-            if((i < frame.ex0.y || i > frame.ex1.y) || (j < frame.ex0.x || j > frame.ex1.x)) {
-
-                uint32_t idx_im = i * im->stride + j; // Indframe.ex relative to image
-
-                // Pixel color data
-                uint32_t abgr = im->buf[idx_im];
-                hsv_t hsv = {0,0,0};
-                rgb_to_hsv(abgr, &hsv);
-                hsv_t error = {fabs(hsv.hue - met.hsv.hue), 
-                                fabs(hsv.sat - met.hsv.sat), 
-                                fabs(hsv.val - met.hsv.val)};
-
-                // 'Acceptable'
-                 if((error.hue < met.error.hue) && 
-                    (error.sat < met.error.sat) && 
-                    (error.val < met.error.val)) 
-                 {
-                    // Create new node, set itself up as a parent
-                    node_t* n = calloc(1, sizeof(node_t));
-                    n->id = idx_im;
-                    n->parent_id = idx_im;
-                    n->parent_node = n;
-                    n->num_children = 0;
-
-                    node_t* tmp_node;
-                    uint32_t tmp_idx;
-
-                    // Add node to node map
-                    if(zhash_put(node_map, &idx_im, &n, &tmp_idx, &tmp_node)==1) 
-                    {
-                        assert(0);
-                    }
-
-                    //Check if apart of another blob, or starting a new blob 
-                    // if apart of another, point to the parent, if a new blob, point to self 
-                    //Check neighbours
-                    if(!met.lines) {    // only check this if don't want lines for tape detection
-                        if(j > frame.xy0.x) {
-                            tmp_idx = idx_im - 1; // is Left neighbour similar color 
-                            if(zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
-                                node_t* neighbour = tmp_node;
-                                connect(n, neighbour);                    
-                            }
-                        }
-                    }
-                    if(i > frame.xy0.y) { 
-                        tmp_idx = idx_im - im->stride; // is Bottom neighbor similar color
-                        if(tmp_idx > 0 && zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
-                            node_t* neighbour = tmp_node;
-                            connect(neighbour,n);                    
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-
-    //count number of children for each parent, go through node_map
-    // if a node is not a parent, add 1 to it's parent->num_children and delete from hash
-    // if is a parent do nothing
-    zarray_t* vals = zhash_values(node_map);
-    for(int i = 0; i < zarray_size(vals); i++) {
-        node_t* node;
-        zarray_get(vals, i, &node);
-        resolve_r(node);
-
-        if(node->parent_id != node->id) {
-            node->parent_node->num_children++;
-            // key should exist, if it doesn't find out why
-            assert(zhash_remove(node_map, &node->id, NULL, NULL));
-        }
-    }
-
-    // search parent only hash and add to blobs out conditionally
-    vals = zhash_values(node_map);
-    for(int i = 0; i < zarray_size(vals); i++) {
-        node_t* node;
-        zarray_get(vals, i, &node);
-        if(node->num_children > met.min_size) {
-            loc_t pos;
-            pos.x = node->parent_id%im->stride;
-            pos.y = node->parent_id/im->stride;
-            zarray_add(blobs_out, &pos);
-            // printf("parent %d\n", node->id);
-        }
-    }
-    zarray_destroy(vals);
-    zhash_vmap_values(node_map, free);
-    zhash_destroy(node_map);
 }
 
 // return int with average RGB values
@@ -399,12 +275,16 @@ double dot_product(grad_t a, grad_t b, double min_mag)
 
 double compare_pix(abgr_t a, abgr_t b)
 {
-    // return(fabs(a.r - b.r) + 
-    //         fabs(a.g - b.g) + 
-    //         fabs(a.b - b.b));
-    return(sqrt((a.r-b.r)*(a.r-b.r)+
-                (a.b-b.b)*(a.b-b.b)+
-                (a.g-b.g)*(a.g-b.g)));
+    // return(sqrt((a.r-b.r)*(a.r-b.r)+
+    //             (a.b-b.b)*(a.b-b.b)+
+    //             (a.g-b.g)*(a.g-b.g)));
+
+    // difference in value in HSV should give gray scale
+    uint8_t max_a = MAX3(a.r, a.b, a.g);
+    uint8_t max_b = MAX3(b.r, b.b, b.g);
+    return(max_a - max_b);
+
+
 }
 
 
@@ -424,9 +304,13 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
 {
     int idx = y*im->stride + x;
     int abgr = im->buf[idx];
-    pixel_t curr_pix = {{(abgr >> 24) & 0xff, (abgr >> 16) & 0xff, 
-                            (abgr >> 8) & 0xff, (abgr) & 0xff}, {0, 0},
-                            {-1, -1}};
+    pixel_t curr_pix = {    .abgr = {  (abgr >> 24) & 0xff, 
+                                        (abgr >> 16) & 0xff, 
+                                        (abgr >> 8) & 0xff, 
+                                        (abgr) & 0xff}, 
+                            .grad = {0, 0},
+                            .loc = {-1, -1}
+                        };
 
     // // add gradient from left
     // if(x > 0) {
@@ -450,7 +334,7 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         abgr_t left_color = {(left_buf >> 24) & 0xff, (left_buf >> 16) & 0xff, 
                                 (left_buf >> 8) & 0xff, (left_buf) & 0xff};    
         double diff = compare_pix(left_color, curr_pix.abgr);
-        curr_pix.grad.x += (-1)*diff;
+        curr_pix.grad.x += diff;
     }
 
     // add gradient from bottom
@@ -459,7 +343,7 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         abgr_t bottom_color =  {(bottom_buf >> 24) & 0xff, (bottom_buf >> 16) & 0xff, 
                                 (bottom_buf >> 8) & 0xff, (bottom_buf) & 0xff};    
         double diff = compare_pix(bottom_color, curr_pix.abgr);
-        curr_pix.grad.y += (-1)*diff;
+        curr_pix.grad.y += diff;
     }
 
     // add gradient from bottom-left
@@ -531,11 +415,13 @@ uint32_t mag_to_gray(g_node_t* n, int add)
     // normalize to 0xff or 255
     int brightness = (mag*255) / 625;
     // assert(brightness < 256);
+    if((brightness + add) <= 0xFF)  brightness += add;
 
     uint32_t color = 0xff000000;
     color += (brightness &0xFF) << 16;
     color += (brightness &0xFF) << 8;
     color += (brightness &0xFF);
+
     // if(mag > 0) {
         // printf("color:%x  ,  mag:(%lf, %lf)  loc:(%d, %d) \n", 
         //         color, n->grad.x, n->grad.y, n->loc.x, n->loc.y);
@@ -557,9 +443,9 @@ void convert_to_grad_image(image_u32_t* im, int add)
             g_node_t* tmp;
             zhash_get(node_map, &idx, &tmp);
             
-            uint32_t a = tmp->grad.x & 0xffffff;
-            uint32_t b = tmp->grad.y & 0xffffff;
-            uint32_t mag = sqrt((a*a)+(b*b));
+            // uint32_t a = tmp->grad.x & 0xffffff;
+            // uint32_t b = tmp->grad.y & 0xffffff;
+            // uint32_t mag = sqrt((a*a)+(b*b));
             im->buf[idx] = mag_to_gray(tmp, add);
             // printf("(%d, %d)  (%d, %d) val:%d\n", x, y, a, b, mag);
             free(tmp);
@@ -569,20 +455,103 @@ void convert_to_grad_image(image_u32_t* im, int add)
     zhash_destroy(node_map);
 }
 
-uint32_t grad_dir_to_color(g_node_t* n)
+int in_range(image_u32_t* im, int x, int y)
+{
+    if(y < 0 || x < 0)  return(0);
+    else if(y > (im->height-1) || x > (im->width-1)) return(0);
+    else return(1);
+}
+
+int radius = 2;
+int gaussian_weights[25] =             {1, 4, 7, 4, 1, 
+                                        4, 16, 26, 16, 4, 
+                                        7, 26, 41, 26, 7, 
+                                        4, 16, 26, 16, 4, 
+                                         1, 4, 7, 4, 1};
+
+uint32_t get_pix_gaussian_ave(image_u32_t* im, loc_t pix)
+{
+    // Do I need a in this or can assume = 0xFF
+    double r=0, g=0, b=0;
+    int i=0;
+    int gaus_divisor = 0;
+
+    // printf("\n\n");
+    for(int y = (-1)*radius; y <= radius; y++) {
+        for(int x = (-1)*radius; x <= radius; x++) {
+            // get the rgb values of the pixel 
+            if(in_range(im, (pix.x+x), (pix.y+y))) {
+                uint32_t tmp = im->buf[(pix.y+y)*im->stride + (pix.x+x)];
+                r += ((tmp >> 0) & 0xFF) * gaussian_weights[i];
+                g += ((tmp >> 8) & 0xFF) * gaussian_weights[i];
+                b += ((tmp >> 16) & 0xFF) * gaussian_weights[i];
+
+                gaus_divisor += gaussian_weights[i];
+                
+                // printf("pix:(%d, %d)  neighbor:(%d, %d)   %d:%d    %x: (%lf, %lf, %lf)  \n", 
+                //         pix.x, pix.y,(pix.x+x), (pix.y+y), i, gaussian_weights[i],
+                //         tmp, r, g, b);
+            }
+            i++;
+        }
+    }
+    // reform blurry pix value
+    uint32_t out = 0xFF000000;
+    out += (int)(r/gaus_divisor) & 0xFF << 0;
+    out += ((int)(g/gaus_divisor) & 0xFF) << 8;
+    out += ((int)(b/gaus_divisor) & 0xFF) << 16;
+
+    uint32_t prev = im->buf[pix.y*im->stride + pix.x];
+    // printf("before:(%d, %d, %d)  after:(%d, %d, %d)   %d\n\n",
+    //         ((prev >> 0) & 0xFF), ((prev >> 8) & 0xFF), ((prev >> 16) & 0xFF),
+    //          (int)(r/gaus_divisor) & 0xFF, (int)(g/gaus_divisor) & 0xFF, 
+    //          (int)(b/gaus_divisor) & 0xFF, gaus_divisor);
+    return(out);
+
+}
+
+image_u32_t* blur_image(image_u32_t* im, int num_passes) 
+{
+    if(num_passes == 0) return(im);
+    image_u32_t* hold_ptr = im;
+    image_u32_t* blur_im = image_u32_create(im->width, im->height);
+    int r = 3;
+
+    for(int i = 0; i < num_passes; i++)
+    {
+        for(int y = 0; y < (im->height-1); y++) {
+            for(int x = 0; x < (im->width-1); x++) {
+                int idx = y * im->stride + x;  
+                loc_t tmp = {x, y};  
+                uint32_t val = get_pix_gaussian_ave(im, tmp);
+                blur_im->buf[idx] = val;
+            }
+        }
+        im = blur_im;
+    }
+    image_u32_destroy(hold_ptr);
+    return(blur_im);
+}
+
+uint32_t grad_dir_to_color(g_node_t* n, double min_mag)
 {
     // convert from -PI -> PI   to   0 -> 360 degrees 
     double angle = atan2(n->grad.y, n->grad.x);
     double mag = sqrt(n->grad.x*n->grad.x + n->grad.y*n->grad.y);
-    if(mag < MINMAGTOPLOT)
+    if(mag < min_mag)
         return(0xFFFFFFFF);
     angle += PI;
     angle *= 180/PI;
     hsv_t hsv = {angle, 1,1};
-    return(hsv_to_rgb(hsv));
+
+    uint32_t out = hsv_to_rgb(hsv);
+    // printf("loc:(%d, %d)    grad:(%lf, %lf)  rgb:(%d, %d, %d)\n",
+    //         n->loc.x, n->loc.y, n->grad.x, n->grad.y, 
+    //         out&0xFF, (out>>8)&0xFF, (out>>16)&0xFF);
+    return(out);
 }
 
-void convert_to_grad_dir_image(image_u32_t* im, int bright)
+void convert_to_grad_dir_image(image_u32_t* im, int bright, double min_mag)
 {
     zhash_t* node_map = build_gradient_image(im);
 
@@ -593,7 +562,7 @@ void convert_to_grad_dir_image(image_u32_t* im, int bright)
             g_node_t* tmp;
             zhash_get(node_map, &idx, &tmp);
     
-            im->buf[idx] = grad_dir_to_color(tmp);
+            im->buf[idx] = grad_dir_to_color(tmp, min_mag);
             free(tmp);
         }
     }  
@@ -654,21 +623,38 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
                     connect_g(curr_n, tmp_n);  
                 }                  
             }
-            // // check bottom left 
-            // if(x > 0 && y > 0) {
-            //     int tmp_idx = idx - (1 + im->stride);
-            //     if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
-            //         assert(0);
-            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < max_grad_diff ) {
-            //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-            //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-            //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-            //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-            //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-            //             break;
-            //         connect_g(curr_n, tmp_n);                    
-            //     }
-            // }
+            // check bottom left 
+            if(x > 0 && y > 0) {
+                int tmp_idx = idx - (1 + im->stride);
+                if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
+                    assert(0);
+                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
+                                < thresh.max_grad_diff ) {
+                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
+                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
+                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
+                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
+                        break;
+                    connect_g(curr_n, tmp_n);                    
+                }
+            }
+            // check top left 
+            if(x > 0 && y < im->height-1) {
+                int tmp_idx = idx - (1 - im->stride);
+                if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
+                    assert(0);
+                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
+                                < thresh.max_grad_diff ) {
+                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
+                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
+                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
+                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
+                        break;
+                    connect_g(curr_n, tmp_n);                    
+                }
+            }
             // // check right 
             // if(x < im->width-1) {
             //     int tmp_idx = idx + 1;
@@ -688,7 +674,7 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
             // if(y < im->height-1) { 
             //     int tmp_idx = idx + im->stride; 
             //     zhash_get(node_map, &tmp_idx, &tmp_n);
-            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < thresh.max_grad_diff) {
+            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mgeag) < thresh.max_grad_diff) {
             //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
             //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
             //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 

@@ -2,10 +2,11 @@
 #include "math.h"   
 #include "camera_util.h"
 #include "homography_botlab.h"
+#include "../common/homography.h"
+#include "blob_util.h"
 
 //#define NUM_CALIB_POINTS 6
 #define NUM_TEST_BLOBS 35
-char* matrix_format = "%15.5f";
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 typedef struct vx_event_handler event_handler_t;
@@ -113,31 +114,6 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
 
     pthread_mutex_unlock(&mutex);
 }
-
-// return true if a is above or to the left of b
-int compare(const void* a, const void* b)
-{
-    // note, this could be a source of error, So if homography 
-    // goes crazy from small movements look here!! The sorting may be wrong
-    int pixel_error_margin = 25;
-
-    loc_t* c = (loc_t*)a;
-    loc_t* d = (loc_t*)b;
-    // same row
-    if(abs(c->y - d->y) < pixel_error_margin) 
-    {
-        // shouldn't be two points within 2 pixels of each other
-       // assert(abs(a_xy[0] - b_xy[0]) > pixel_error_margin);
-        // a is right of b
-        if(c->x > d->x)
-            return(1);
-    }   // a above b
-    else if(c->y - d->y) 
-        return(1);
-
-    return(0);
-}
-
 
 
 // void* render_loop(void *data)
@@ -300,6 +276,7 @@ void* render_loop(void *data)
     //"/home/jjrasche/eecs467_botlab/src/botlab/pic0.pnm";
     image_u32_t *distort_im = image_u32_create_from_pnm(image_file);
     matd_t * H;
+    matd_t* Model;
     int pix_array[NUM_DISTORT_POINTS*2];
 
     double scale = 5.0;
@@ -385,7 +362,17 @@ void* render_loop(void *data)
 
 
         // create homography from plane coordinates and blobs  pix = H plane_coords
-        // H = dist_homography(pix_array);
+        if(correct_num_blobs) {
+            H = dist_homography(pix_array);
+            Model = homography_to_pose(H, 949, 949, 0, 0);
+            int i = 0;
+            printf("\n\n");
+            matd_print(H, matrix_format);
+            printf("\n");
+            matd_print(Model, matrix_format);
+            printf("\n\n");
+
+        }
 
         // // iterate through estimated positions to make them pixels, plot and compare them 
         // idx = 0; 
