@@ -109,7 +109,6 @@ struct metric
   int lines;
 };
 
-
 typedef struct node node_t;
 struct node {
     uint32_t id;

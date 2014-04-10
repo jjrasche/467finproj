@@ -29,7 +29,14 @@ Solution:   I allocated a zarray of the wrong size (ball_pos_t) and was filling
 #include "homography_botlab.h"
 #include "blob_util.h"
 
-char image_name[100] = "/home/jjrasche/finalProject/src/finproj/pic0.pnm";
+typedef struct image image_t;
+struct image
+{
+    char name[200];
+    loc_t size;
+    double dist;
+};
+
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -50,12 +57,7 @@ struct state
     int blur_amount;
     double min_mag;
     double max_grad_diff;
-    matd_t* homography_matrix;
-    int print_click;
-    int clicks_to_calibration;
-    zarray_t* anchors;
-    int pic_num;
-    int take_image;
+
     int static_image;
     int grad_image;
     int grad_dir_image;
@@ -65,6 +67,11 @@ struct state
     int segment_image;
     int show_pix;
     int show_homography;
+
+    zarray_t* image_array;
+    int opened_im;
+    int pic_num;
+    int take_image;
 
     vx_world_t *world;  // Where vx objects are live
     vx_layer_t* layer;    
@@ -205,10 +212,15 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("show_homography", name)) {
         state->show_homography = pg_gb(pg,name);
     }   
+    if (!strcmp("next_image", name)) {
+        state->opened_im++;
+        if(state->opened_im == zarray_size(state->image_array)) 
+            state->opened_im = 0;
+        printf("opened_image = %d    %d\n", state->opened_im, zarray_size(state->image_array));
+    }   
 
     pthread_mutex_unlock(&mutex);
 }
-
 
 
 void* render_loop(void *data)
@@ -244,7 +256,9 @@ void* render_loop(void *data)
             else {
                 image_u32_t *im;
                 if(static_image == 1) {
-                    im = image_u32_create_from_pnm(image_name);
+                    image_t image;
+                    zarray_get(state->image_array, state->opened_im, &image);
+                    im = image_u32_create_from_pnm(image.name);
                 }
                 else {
                     im = image_convert_u32(frmd);
@@ -293,64 +307,70 @@ void* render_loop(void *data)
                     }
 
 
-                    int num_lines = zarray_size(lines);
-                    printf("num_lines = %d \n", num_lines);   
-                    float color[4] = {0.3f, 0.6f, 0.9f, 1.0f};
-                    double change = 0.3;
-                    int npoints = num_lines * 2;
-                    float points[npoints*3];
-                    if(num_lines != 0) {
-                        for(int i = 0; i < num_lines; i++) 
-                        {
-                            line_t l;
-                            zarray_get(lines, i, &l);
-                            points[6*i + 0] = l.start.x;
-                            points[6*i + 1] = l.start.y;
-                            points[6*i + 2] = 1;
-                            points[6*i + 3] = l.end.x;
-                            points[6*i + 4] = l.end.y;
-                            points[6*i + 5] = 1;
-                            // printf("line:%d start:(%d, %d)  end:(%d, %d) \n", 
-                            //         i, l.start.x, l.start.y, l.end.x, l.end.y);
+                    // int num_lines = zarray_size(lines);
+                    // printf("num_lines = %d \n", num_lines);   
+                    // float color[4] = {0.3f, 0.6f, 0.9f, 1.0f};
+                    // double change = 0.3;
+                    // int npoints = num_lines * 2;
+                    // float points[npoints*3];
+                    // if(num_lines != 0) {
+                    //     for(int i = 0; i < num_lines; i++) 
+                    //     {
+                    //         line_t l;
+                    //         zarray_get(lines, i, &l);
+                    //         points[6*i + 0] = l.start.x;
+                    //         points[6*i + 1] = l.start.y;
+                    //         points[6*i + 2] = 1;
+                    //         points[6*i + 3] = l.end.x;
+                    //         points[6*i + 4] = l.end.y;
+                    //         points[6*i + 5] = 1;
+                    //         // printf("line:%d start:(%d, %d)  end:(%d, %d) \n", 
+                    //         //         i, l.start.x, l.start.y, l.end.x, l.end.y);
 
-                            if(show_pix) {
+                    //         if(show_pix) {
 
-                                if((color[i%3] + change) > 1) color[i%3] = 0;
-                                else color[i%3]+= change;
+                    //             if((color[i%3] + change) > 1) color[i%3] = 0;
+                    //             else color[i%3]+= change;
 
-                                for(int j = 0; j < zarray_size(l.nodes); j++)
-                                {
-                                    g_node_t* node;
-                                    zarray_get(l.nodes, j, &node);
-                                    vx_buffer_add_back(buf,
-                                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                                            vxo_chain(vxo_mat_translate3(node->loc.x, node->loc.y, 1),
-                                                        vxo_mat_scale(1.0f),
-                                                        vxo_circle(vxo_mesh_style(color)))));
-                                    // printf("num:%d   loc:(%d, %d)  grad:(%lf, %lf)  color:(%f, %f, %f, %f)\n", i, 
-                                    //         node->loc.x, node->loc.y, node->grad.x, node->grad.y,
-                                    //         color[0], color[1], color[2], color[3]);
-                                }
-                            }
-                            zarray_vmap(l.nodes, free);
-                            zarray_destroy(l.nodes);
-                        }
-                    }
+                    //             for(int j = 0; j < zarray_size(l.nodes); j++)
+                    //             {
+                    //                 g_node_t* node;
+                    //                 zarray_get(l.nodes, j, &node);
+                    //                 vx_buffer_add_back(buf,
+                    //                     vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                    //                         vxo_chain(vxo_mat_translate3(node->loc.x, node->loc.y, 1),
+                    //                                     vxo_mat_scale(1.0f),
+                    //                                     vxo_circle(vxo_mesh_style(color)))));
+                    //                 // printf("num:%d   loc:(%d, %d)  grad:(%lf, %lf)  color:(%f, %f, %f, %f)\n", i, 
+                    //                 //         node->loc.x, node->loc.y, node->grad.x, node->grad.y,
+                    //                 //         color[0], color[1], color[2], color[3]);
+                    //             }
+                    //         }
+                    //         zarray_vmap(l.nodes, free);
+                    //         zarray_destroy(l.nodes);
+                    //     }
+                    // }
 
-                    if(add_lines) {
-                        vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
-                        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                                                        vxo_lines(verts, npoints, GL_LINES, 
-                                                            vxo_points_style(vx_blue, 2.0f))));
-                    }
+                    // if(add_lines) {
+                    //     vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
+                    //     vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                    //                                     vxo_lines(verts, npoints, GL_LINES, 
+                    //                                         vxo_points_style(vx_blue, 2.0f))));
+                    // }
+
                     if(homography) {
-                        printf("in here\n");
-                        take_measurements(flipped, NULL);
+                        metrics_t met = {   .hsv = hsv,//{hsv.hue, hsv.sat, hsv.val},
+                                            .error = max_hsv_diff,//{max_hsv_diff.hue, max_hsv_diff.sat, max_hsv_diff.val},
+                                            .min_size = min_size,
+                                            .lines = 0
+                                        };
+                        take_measurements(flipped, buf, met);
                     }
                     if(take_pic == 1) {
                         pthread_mutex_lock(&mutex);
-                        capture_image(flipped, 0);
+                        capture_image(im, state->pic_num);
                         state->take_image = 0;
+                        state->pic_num++;
                         pthread_mutex_unlock(&mutex);
                     }
 
@@ -371,6 +391,35 @@ void* render_loop(void *data)
     return NULL;
 }
 
+void add_image(zarray_t* arr, char* name, int x, int y, int dist)
+{
+    image_t image;
+    strcpy(image.name, name);
+    image.size.x = x;
+    image.size.y = y;
+    image.dist = dist;
+
+    zarray_add(arr, &image);
+}
+
+void add_images(zarray_t* arr)
+{
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_352x258.pnm", 355, 258, 1.5);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_352x258.pnm", 355, 258, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_352x258.pnm", 355, 258, 3);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/4_meter_352x258.pnm", 355, 258, 4);
+
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_640x480.pnm", 640, 480, 1.5);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_640x480.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_640x480.pnm", 640, 480, 3);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/4_meter_640x480.pnm", 640, 480, 4);
+    
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_1280x720.pnm", 1280, 720, 1.5);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_1280x720.pnm", 1280, 720, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_1280x720.pnm", 1280, 720, 3);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/4_meter_1280x720.pnm", 1280, 720, 4);
+
+}
 
 
 // This is intended to give you a starting point to work with for any program
@@ -398,16 +447,13 @@ int main(int argc, char **argv)
     my_event_handler->touch_event = custom_touch_event;
     my_event_handler->destroy = custom_destroy;
     vx_layer_add_event_handler(state->layer, my_event_handler);
+
     state->running = 1;
-    
-    //Homography calculated 5:18PM 3/3/14 with b=1.2.16, c = -.0055.
-    // const double h_data[3][3] = {//[3][3];
-    // {0.60201, 0.62505, 1.96377},
-    // {0.34545, 0.00470, -5.56394},
-    // {0.00147, -0.00000, 0.00496}
-    // };
-    // state->homography_set = 1;
-    // state->homography_matrix = matd_create_data(3, 3, *h_data);
+    state->image_array = zarray_create(sizeof(image_t));
+    add_images(state->image_array);
+
+    image_t tmp;
+    zarray_get(state->image_array, 0, &tmp);
 
     // Parse arguments from the command line, showing the help
     // screen if required
@@ -455,33 +501,34 @@ int main(int argc, char **argv)
     parameter_gui_t *pg = pg_create();
 
     state->target_error.hue = 45;
-    state->target_error.sat = .113;
-    state->target_error.val = .25;
-    state->target_hsv.hue = 171.5;
-    state->target_hsv.sat = 0.148;
-    state->target_hsv.val = 0.6;
-    // pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
-    // pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
-    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
-    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
-    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
-    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
+    state->target_error.sat = .65;
+    state->target_error.val = .73;
+    state->target_hsv.hue = 131;
+    state->target_hsv.sat = 1;
+    state->target_hsv.val = 1;
+    state->min_size = 15;
+    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
+    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
+    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
+    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
+    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
+    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
+    pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
     state->static_image = 1;
     state->take_image = 0;
+    state->pic_num = 0;
     state->grad_dir_image = 0;
     state->show_homography = 0;
-    state->min_size = 29;
     state->max_grad_diff = 13.34;        // in degrees
     state->brightness = 0;
     state->min_mag = 15.4; 
-    state->blur_amount = 1;
-    pg_add_int_slider(pg, "brightness", "Bright", 0, 50, state->brightness);
-    pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
-    pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
-    pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 90, state->max_grad_diff);
-    pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 100, state->min_mag);
+    state->blur_amount = 0;
+    // pg_add_int_slider(pg, "brightness", "Bright", 0, 50, state->brightness);
+    // pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
+    // pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 90, state->max_grad_diff);
+    // pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 100, state->min_mag);
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 
                         "grad_image", "Show Grad", 0,
@@ -492,6 +539,9 @@ int main(int argc, char **argv)
                         "show_pix", "Show Pixels", 0,
                         "show_homography", "Show Homography", 0,
                                             NULL);
+    pg_add_buttons(pg,
+                   "next_image", "Next Image",
+                   NULL);
 
     int pg_add_check_boxes(parameter_gui_t *pg, const char *name, const char * desc, int is_checked, ...) __attribute__((sentinel));
 

@@ -5,41 +5,30 @@
 
 char* matrix_format = "%15.5f";
 float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  0,      0,
-                                                    4,      0, 
-                                                    8,      0,
-                                                    12,     0,
-                                                    16,     0,
-                                                    20,     0,
-                                                    24,     0,
-                                                    0,      4,
-                                                    4,      4, 
-                                                    8,      4,
-                                                    12,     4,
-                                                    16,     4,
-                                                    20,     4,
-                                                    24,     4,
-                                                    0,      8,
-                                                    4,      8, 
-                                                    8,      8,
-                                                    12,     8,
-                                                    16,     8,
-                                                    20,     8,
-                                                    24,     8,
-                                                    0,      12,
-                                                    4,      12, 
-                                                    8,      12,
-                                                    12,     12,
-                                                    16,     12,
-                                                    20,     12,
-                                                    24,     12,
-                                                    0,      16,
-                                                    4,      16, 
-                                                    8,      16,
-                                                    12,     16,
-                                                    16,     16,
-                                                    20,     16,
-                                                    24,     16
-                                                                };
+                                                17,     0,
+                                                34,     0,
+                                                51,     0,
+                                                68,     0,
+                                                0,      17,
+                                                17,     17,
+                                                34,     17,
+                                                51,     17,
+                                                68,     17,
+                                                0,      34,
+                                                17,     34,
+                                                34,     34,
+                                                51,     34,
+                                                68,     34,
+                                                0,      51,
+                                                17,     51,
+                                                34,     51,
+                                                51,     51,
+                                                68,     51,
+                                                0,      68,
+                                                17,     68,
+                                                34,     68,
+                                                51,     68,
+                                                68,     68};
 
 node_t* resolve_r(node_t* n) {
     if(n->parent_id == n->id) return n;
@@ -184,36 +173,39 @@ int compare(const void* a, const void* b)
 {
     // note, this could be a source of error, So if homography 
     // goes crazy from small movements look here!! The sorting may be wrong
-    int pixel_error_margin = 25;
+    int pixel_error_margin = 15;
 
     loc_t* c = (loc_t*)a;
     loc_t* d = (loc_t*)b;
+
     // same row
     if(abs(c->y - d->y) < pixel_error_margin) 
     {
         // shouldn't be two points within 2 pixels of each other
        // assert(abs(a_xy[0] - b_xy[0]) > pixel_error_margin);
         // a is right of b
-        if(c->x > d->x)
+        if(c->x > d->x) {
             return(1);
+        }
     }   // a above b
-    else if(c->y - d->y) 
+    else if(c->y > d->y) 
         return(1);
     return(0);
 }
 
 // returns the 35 points associated to the test chart in [x1,y1,x2,y2] 
 // format if there are more than 35 points will return NULL
-matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf)
+matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
 {
     frame_t frame = {{0,0}, {im->width-1, im->height-1},
                         {0,0}, {1,1}};
 
-    metrics_t met = {   {180, .249, .196},      // hue
-                        {42.1, .131, .068},     // error
-                        40,                     // num_blobs
-                        0                       // no lines
-                    };
+    // metrics_t met = {   {180, .249, .196},      // hue
+    //                     {42.1, .131, .068},     // error
+    //                     40,                     // num_blobs
+    //                     0                       // no lines
+    //                 };
+
     int pix_array[NUM_CHART_BLOBS*2];
 
     zarray_t* blobs = zarray_create(sizeof(loc_t));
@@ -222,23 +214,29 @@ matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf)
 
     // iterate through
     int idx = 0;
+    double size = 2.0;
     for(int i = 0; i < zarray_size(blobs); i++) {
         loc_t pos;
         zarray_get(blobs, i, &pos);
         if(buf != NULL) {
             vx_buffer_add_back(buf,
                      vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                            vxo_chain(vxo_mat_translate3(pos.x, abs(pos.y-im->height), 0),
-                                vxo_mat_scale(1.0f),
+                            vxo_chain(vxo_mat_translate3(pos.x, pos.y, 0),
+                                vxo_mat_scale(size),
                                 vxo_circle(vxo_mesh_style(vx_maroon)))));
         }
+        // size += .2;
+        // printf("(%d, %d)\n", pos.x, pos.y);
         if(zarray_size(blobs) == NUM_CHART_BLOBS) {
             pix_array[idx*2] = pos.x;
             pix_array[idx*2+1] = pos.y;
             idx++;
         }
     }
-    if(zarray_size(blobs) != NUM_CHART_BLOBS) return(NULL);
+    if(zarray_size(blobs) != NUM_CHART_BLOBS) {
+        printf("num figures: %d\n", zarray_size(blobs));
+        return(NULL);
+    }
 
     zarray_destroy(blobs);
 
@@ -246,17 +244,22 @@ matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf)
 }
 
 // if buf is NULL, will not fill with points of the homography
-void take_measurements(image_u32_t* im, vx_buffer_t* buf)
+void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
 {
     // form homography
-    matd_t* H = build_homography(im, buf);
+    matd_t* H = build_homography(im, buf, met);
+    if(H == NULL) return;
 
     // get model view from homography
     matd_t* Model = homography_to_pose(H, 949, 949, 0, 0);
-
+    printf("\n");
+    matd_print(H, matrix_format);
+    printf("\n\n");
+    matd_print(Model, matrix_format);
+    printf("\n");
     // extrapolate metrics from model view
-    double TZ = MATD_EL(Model, 3, 2);
+    double TZ = MATD_EL(Model, 2, 3);
     double cosine = MATD_EL(Model, 0, 0);
     double theta = acos(cosine);
-    printf("dist: %lf    angle: %lf", TZ, theta);
+    printf("dist: %lf   cos:%lf  angle: %lf\n", TZ, cosine, theta);
 }

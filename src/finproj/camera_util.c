@@ -245,34 +245,6 @@ static void connect_g(g_node_t* n1, g_node_t* n2) {
     // n1's child nodes, are not changed to n2
 }
 
-double dot_product(grad_t a, grad_t b, double min_mag)
-{
-    double mag_a = sqrt(a.x*a.x+a.y*a.y);
-    if(mag_a < min_mag) {
-        return(MAXDOT);
-    }
-    double mag_b = sqrt(b.x*b.x+b.y*b.y);
-    if(mag_b < min_mag) {
-        return(MAXDOT);
-    }
-    // if both above a magnitude, return their dot product
-    double ret = fabs(atan2(a.y, a.x) - atan2(b.y, b.x));//* (180/PI);
-    if(ret > 360)
-    {
-        int i = 0;
-    }
-    if(ret < (-1)*PI) {
-        ret += 2*PI;
-    }
-    if(ret > PI) {
-        ret -= 2*PI;
-    }
-    // printf("a:(%lf, %lf, %lf)   b(%lf, %lf, %lf)   ret:(%lf, %lf)\n",
-    //         a.x, a.y, mag_a, b.x, b.y, mag_b, 
-    //         fabs(atan2(a.y, a.x) - atan2(b.y, b.x)), fabs(ret)*(180/PI));
-    return(fabs(ret)*(180/PI));
-}
-
 double compare_pix(abgr_t a, abgr_t b)
 {
     // return(sqrt((a.r-b.r)*(a.r-b.r)+
@@ -569,124 +541,86 @@ void convert_to_grad_dir_image(image_u32_t* im, int bright, double min_mag)
     zhash_destroy(node_map);
 }
 
-
-int zero_grad(grad_t g)
+double dot_product(grad_t a, grad_t b, threshold_metrics_t thresh)
 {
-    if(g.x == 0 && g.y == 0)
-        return(1);
-    return(0);
+    double mag_a = sqrt(a.x*a.x+a.y*a.y);
+    if(mag_a < thresh.min_mag) {
+        return(MAXDOT);
+    }
+    double mag_b = sqrt(b.x*b.x+b.y*b.y);
+    if(mag_b < thresh.min_mag) {
+        return(MAXDOT);
+    }
+    // if both above a magnitude, return their dot product
+    double ret = fabs(atan2(a.y, a.x) - atan2(b.y, b.x));//* (180/PI);
+    if(ret > 360)
+    {
+        int i = 0;
+    }
+    if(ret < (-1)*PI) {
+        ret += 2*PI;
+    }
+    if(ret > PI) {
+        ret -= 2*PI;
+    }
+    // if(fabs(ret)*(180/PI) < thresh.max_grad_diff) {
+    //     printf("a:(%lf, %lf, %lf)   b(%lf, %lf, %lf)   ret:(%lf, %lf)\n",
+    //             a.x, a.y, mag_a, b.x, b.y, mag_b, 
+    //             fabs(atan2(a.y, a.x) - atan2(b.y, b.x)), fabs(ret)*(180/PI));
+    // }
+    return(fabs(ret)*(180/PI));
 }
 
+void make_connection(zhash_t* node_map, g_node_t* curr_n, int check_idx, 
+                        threshold_metrics_t thresh)
+{
+    g_node_t* tmp_n;
+    if(zhash_get(node_map, &check_idx, &tmp_n) != 1)
+        assert(0);
+    if(dot_product(curr_n->grad, tmp_n->grad, thresh) 
+                    < thresh.max_grad_diff ) {
+        // printf("L curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
+        //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
+        //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
+        //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
+        connect_g(curr_n, tmp_n);                    
+    }   
+}
 
 // connect similar gradient nodes, close to each other
 zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
 {
     zhash_t* node_map = build_gradient_image(im);
-    // printf("\n\n\n");
 
     for(int y = 0; y < (im->height-1); y++) {
         for(int x = 0; x < (im->width-1); x++) {
             
             int idx = y*im->stride + x;
-            g_node_t* tmp_n;
             g_node_t* curr_n;
             zhash_get(node_map, &idx, &curr_n);
-            // TODO: may need to check more areas
+
             // check left 
             if(x > 0) {
                 int tmp_idx = idx - 1;
-                if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
-                    assert(0);
-                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
-                                < thresh.max_grad_diff ) {
-                    // printf("L curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-                        break;
-                    connect_g(curr_n, tmp_n);                    
-                }
+                make_connection(node_map, curr_n, tmp_idx, thresh);
             }
             // check bottom 
             if(y > 0) { 
                 int tmp_idx = idx - im->stride; 
-                zhash_get(node_map, &tmp_idx, &tmp_n);
-                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
-                                < thresh.max_grad_diff) {
-                    // printf("B curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-                        break;
-                    connect_g(curr_n, tmp_n);  
-                }                  
+                make_connection(node_map, curr_n, tmp_idx, thresh);               
             }
             // check bottom left 
             if(x > 0 && y > 0) {
                 int tmp_idx = idx - (1 + im->stride);
-                if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
-                    assert(0);
-                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
-                                < thresh.max_grad_diff ) {
-                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-                        break;
-                    connect_g(curr_n, tmp_n);                    
-                }
+                make_connection(node_map, curr_n, tmp_idx, thresh);
             }
-            // check top left 
-            if(x > 0 && y < im->height-1) {
-                int tmp_idx = idx - (1 - im->stride);
-                if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
-                    assert(0);
-                if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) 
-                                < thresh.max_grad_diff ) {
-                    // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-                    //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-                    //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-                    //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-                    if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-                        break;
-                    connect_g(curr_n, tmp_n);                    
-                }
-            }
-            // // check right 
-            // if(x < im->width-1) {
-            //     int tmp_idx = idx + 1;
-            //     if(zhash_get(node_map, &tmp_idx, &tmp_n) != 1)
-            //         assert(0);
-            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag) < thresh.max_grad_diff ) {
-            //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-            //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-            //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-            //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-            //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-            //             break;
-            //         connect_g(tmp_n, curr_n);                    
-            //     }
-            // }
-            // // check top
-            // if(y < im->height-1) { 
-            //     int tmp_idx = idx + im->stride; 
-            //     zhash_get(node_map, &tmp_idx, &tmp_n);
-            //     if(dot_product(curr_n->grad, tmp_n->grad, thresh.min_mgeag) < thresh.max_grad_diff) {
-            //         // printf("curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
-            //         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
-            //         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-            //         //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
-            //         if(zero_grad(curr_n->grad) && zero_grad(tmp_n->grad))
-            //             break;
-            //         connect_g(curr_n, tmp_n);  
-            //     }                  
-            // }   
+            // // check top left 
+            // if(x > 0 && y < im->height-1) {
+            //     int tmp_idx = idx - (1 - im->stride);
+            //     make_connection(node_map, curr_n, tmp_idx, thresh);
+            // }  
         }
     }
-    // printf("\n\n\n");
     return(node_map);
 }
 
