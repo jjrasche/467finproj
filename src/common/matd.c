@@ -1386,8 +1386,6 @@ static matd_svd_t matd_svd_tall(matd_t *A)
         printf("WARNING: maximum iters (%d)\n", iter);
     }
 
-//    printf("%d %d %d\n", A->nrows, A->ncols, iter);
-
 //    printf("Unfixed SVD check: should be zero:\n");
 //    matd_t *Acheck2 = matd_op("M*M*M'-M", LS, B, RS, A);
 //    matd_print(Acheck2, "%15f");
@@ -1429,35 +1427,37 @@ static matd_svd_t matd_svd_tall(matd_t *A)
     matd_t *LP = matd_identity(A->nrows);
     matd_t *RP = matd_identity(A->ncols);
 
+    // We currently have:
+    //
+    // LS * B * RS'
+    //
+    // compute the permutation matrices that will re-order our diagonal
+    // matrix to be in descending order of magnitude.
+    //
+    // B2 = LP*B*RP'
+    //
+    // We will then do:
+    //
+    // LS * LP' * LP * B * RP' * RP * RS =
+    // (LS*LP')*(B2)*(RS*RP')' =
+    //   LS2  * B2 * RS2'    =
+    //    U     S     V'
     for (int i = 0; i < A->ncols; i++) {
-/*        MATD_EL(LP, idxs[i], idxs[i]) = 0; // undo the identity above
-        MATD_EL(RP, idxs[i], idxs[i]) = 0;
-
-        MATD_EL(LP, idxs[i], i) = vals[i] < 0 ? -1 : 1;
-        MATD_EL(RP, idxs[i], i) = 1; //vals[i] < 0 ? -1 : 1;
-*/
         MATD_EL(LP, i, i) = 0; // undo the identity above
         MATD_EL(RP, i, i) = 0;
 
         MATD_EL(LP, i, idxs[i]) = vals[i] < 0 ? -1 : 1;
         MATD_EL(RP, i, idxs[i]) = 1;
-//        MATD_EL(RP, idxs[i], i) = 1; //vals[i] < 0 ? -1 : 1;
     }
 
-//    matd_print(LP, "%15f");
-
-    // we've factored:
-    // LP*(something)*RP'
-
-    // solve for (something)
-    B = matd_op("M'*F*M", LP, B, RP);
-
-//    printf("sorted and positive B?\n");
-//    matd_print(B, "%15f");
+    // solve for B2.
+    // XXX permutations could be done more efficiently than matrix multiply.
+    B = matd_op("M*F*M'", LP, B, RP);
 
     // update LS and RS, remembering that RS will be transposed.
-    LS = matd_op("F*M", LS, LP);
-    RS = matd_op("F*M", RS, RP);
+    // XXX permutation could be done more efficiently than matrix multiply.
+    LS = matd_op("F*M'", LS, LP);
+    RS = matd_op("F*M'", RS, RP);
 
     matd_destroy(LP);
     matd_destroy(RP);
