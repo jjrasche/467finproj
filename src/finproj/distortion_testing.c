@@ -374,74 +374,74 @@ void* render_loop(void *data)
 
         }
 
-        // // iterate through estimated positions to make them pixels, plot and compare them 
-        // idx = 0; 
-        // double error = 0;
-        // for(int i = 0; i < zarray_size(blobs); i++) {
-        //         blob_detector_ballpos_t blob_pix;
-        //         zarray_get(blobs, i, &blob_pix);
+        // iterate through estimated positions to make them pixels, plot and compare them 
+        idx = 0; 
+        double error = 0;
+        for(int i = 0; i < zarray_size(blobs); i++) {
+                blob_detector_ballpos_t blob_pix;
+                zarray_get(blobs, i, &blob_pix);
 
-        //         // TODO: The homography should be in form "pix = H xy", why do I invert this ???
-        //         double tmp[3] = {xy_plane_coords[idx*2], xy_plane_coords[idx*2+1], 1};
-        //         matd_t* xy_matrix = matd_create_data(3,1,tmp);
-        //         matd_t* pix_estimated = matd_op("(M^-1)*M",H, xy_matrix);
+                // TODO: The homography should be in form "pix = H xy", why do I invert this ???
+                double tmp[3] = {xy_plane_coords[idx*2], xy_plane_coords[idx*2+1], 1};
+                matd_t* xy_matrix = matd_create_data(3,1,tmp);
+                matd_t* pix_estimated = matd_op("(M^-1)*M",H, xy_matrix);
 
-        //         // printf("xy position:(%lf, %lf),  actual:(%lf, %lf),  estimated:(%lf, %lf)\n", 
-        //         //         tmp[0], tmp[1], blob_pix.position[0], blob_pix.position[1],
-        //         //         MATD_EL(pix_estimated, 0, 0), MATD_EL(pix_estimated, 1, 0));
-        //         // xy_coords = matd_op("",xy_coords, pix_matrix);
+                // printf("xy position:(%lf, %lf),  actual:(%lf, %lf),  estimated:(%lf, %lf)\n", 
+                //         tmp[0], tmp[1], blob_pix.position[0], blob_pix.position[1],
+                //         MATD_EL(pix_estimated, 0, 0), MATD_EL(pix_estimated, 1, 0));
+                // xy_coords = matd_op("",xy_coords, pix_matrix);
 
-        //         // compare the estimated and blob positions scaled to the radius of the scaled image
-        //         error += abs(blob_pix.position[0]-MATD_EL(pix_estimated, 0, 0))/scaled_radius;
-        //         error += abs(blob_pix.position[1]-MATD_EL(pix_estimated, 1, 0))/scaled_radius;
+                // compare the estimated and blob positions scaled to the radius of the scaled image
+                error += abs(blob_pix.position[0]-MATD_EL(pix_estimated, 0, 0))/scaled_radius;
+                error += abs(blob_pix.position[1]-MATD_EL(pix_estimated, 1, 0))/scaled_radius;
 
-        //         vx_buffer_add_back(buf,
-        //                  vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-        //                         vxo_chain(vxo_mat_translate3(MATD_EL(pix_estimated, 0, 0), 
-        //                                                         abs(MATD_EL(pix_estimated, 1, 0)-restor_im->height),0),
-        //                             vxo_mat_scale(4.0f),
-        //                             vxo_circle(vxo_mesh_style(vx_green)))));
-        //         idx++;        // vx_buffer_swap(buf);
-        // // pthread_cond_wait(&add_blobs,&mutex);
-        // }
-        // // vx_buffer_swap(buf);
-        // // pthread_cond_wait(&add_blobs,&mutex);        // vx_buffer_swap(buf);
-        // // pthread_cond_wait(&add_blobs,&mutex);
-        // usleep(1000000/30);
-        // // print_double_to_BL_screen(error, buf);
+                vx_buffer_add_back(buf,
+                         vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                vxo_chain(vxo_mat_translate3(MATD_EL(pix_estimated, 0, 0), 
+                                                                abs(MATD_EL(pix_estimated, 1, 0)-restor_im->height),0),
+                                    vxo_mat_scale(4.0f),
+                                    vxo_circle(vxo_mesh_style(vx_green)))));
+                idx++;        // vx_buffer_swap(buf);
+        // pthread_cond_wait(&add_blobs,&mutex);
+        }
+        // vx_buffer_swap(buf);
+        // pthread_cond_wait(&add_blobs,&mutex);        // vx_buffer_swap(buf);
+        // pthread_cond_wait(&add_blobs,&mutex);
+        usleep(1000000/30);
+        // print_double_to_BL_screen(error, buf);
 
-        // char str[60];
-        // sprintf(str, "<<#000000>> c:%lf   error: %lf", c, error);
-        // vx_object_t *text = vxo_text_create(VXO_TEXT_ANCHOR_BOTTOM_RIGHT, str); 
-        // vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_RIGHT, text));
+        char str[60];
+        sprintf(str, "<<#000000>> c:%lf   error: %lf", c, error);
+        vx_object_t *text = vxo_text_create(VXO_TEXT_ANCHOR_BOTTOM_RIGHT, str); 
+        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_RIGHT, text));
 
-        // // iterate over c and find the best error 
+        // iterate over c and find the best error 
         
 
-        // c -= step_size;
-        // if (c < end_range || c > start_range) {      // change directions 
-        //     step_size = (-1)*step_size;
-        //     laps++;
-        // }
-        // printf("idx: %d,    c:%lf\n", (int)(c*scale_idx-(end_range*scale_idx)), c);
-        // compare_array[(int)(c*scale_idx-(end_range*scale_idx))] = error;
+        c -= step_size;
+        if (c < end_range || c > start_range) {      // change directions 
+            step_size = (-1)*step_size;
+            laps++;
+        }
+        printf("idx: %d,    c:%lf\n", (int)(c*scale_idx-(end_range*scale_idx)), c);
+        compare_array[(int)(c*scale_idx-(end_range*scale_idx))] = error;
 
 
-        // // pic the best one
-        // if (laps > 1) {
-        //     double best_error = 100000.0f;
-        //     double best_c_value = 100.0f;
-        //     // find best value
-        //     for(int i = 0; i < num_steps; i++) {
-        //         printf("%d,    %lf,      %lf\n", i,  (double)(i/scale_idx+end_range), compare_array[i]);
-        //         if(compare_array[i] < .001) continue;        // a value I skipped because image didn't restore correctly
-        //         if(compare_array[i] < best_error) {
-        //             best_c_value = (double)(i/scale_idx+end_range);
-        //             best_error = compare_array[i];
-        //         }
-        //     }
-        //     printf("best value!! %lf\n", best_error);
-        // }
+        // pic the best one
+        if (laps > 1) {
+            double best_error = 100000.0f;
+            double best_c_value = 100.0f;
+            // find best value
+            for(int i = 0; i < num_steps; i++) {
+                printf("%d,    %lf,      %lf\n", i,  (double)(i/scale_idx+end_range), compare_array[i]);
+                if(compare_array[i] < .001) continue;        // a value I skipped because image didn't restore correctly
+                if(compare_array[i] < best_error) {
+                    best_c_value = (double)(i/scale_idx+end_range);
+                    best_error = compare_array[i];
+                }
+            }
+            printf("best value!! %lf\n", best_error);
+        }
 
 
         //TODO:  split display so can see undistorted and distorted images

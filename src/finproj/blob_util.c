@@ -4,31 +4,57 @@
 #include "../common/homography.h"
 
 char* matrix_format = "%15.5f";
-float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  0,      0,
-                                                17,     0,
-                                                34,     0,
-                                                51,     0,
-                                                68,     0,
-                                                0,      17,
-                                                17,     17,
-                                                34,     17,
-                                                51,     17,
-                                                68,     17,
-                                                0,      34,
-                                                17,     34,
-                                                34,     34,
-                                                51,     34,
-                                                68,     34,
-                                                0,      51,
-                                                17,     51,
-                                                34,     51,
-                                                51,     51,
-                                                68,     51,
-                                                0,      68,
-                                                17,     68,
-                                                34,     68,
-                                                51,     68,
-                                                68,     68};
+// float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  0,      0,
+//                                                 17,     0,
+//                                                 34,     0,
+//                                                 51,     0,
+//                                                 68,     0,
+//                                                 0,      17,
+//                                                 17,     17,
+//                                                 34,     17,
+//                                                 51,     17,
+//                                                 68,     17,
+//                                                 0,      34,
+//                                                 17,     34,
+//                                                 34,     34,
+//                                                 51,     34,
+//                                                 68,     34,
+//                                                 0,      51,
+//                                                 17,     51,
+//                                                 34,     51,
+//                                                 51,     51,
+//                                                 68,     51,
+//                                                 0,      68,
+//                                                 17,     68,
+//                                                 34,     68,
+//                                                 51,     68,
+//                                                 68,     68};
+
+float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  -1,      -1,        //lower left
+                                               -.5,      -1,
+                                                 0,      -1,
+                                                .5,      -1,
+                                                 1,      -1,
+                                                -1,     -.5,
+                                               -.5,     -.5,
+                                                 0,     -.5,
+                                                .5,     -.5,
+                                                 1,     -.5,
+                                                -1,       0,
+                                               -.5,       0,
+                                                 0,       0,
+                                                .5,       0,
+                                                 1,       0,
+                                                -1,      .5,
+                                               -.5,      .5,
+                                                 0,      .5,
+                                                .5,      .5,
+                                                 1,      .5,
+                                                -1,       1,
+                                               -.5,       1,
+                                                 0,       1,
+                                                .5,       1,
+                                                 1,       1,};       // upper rigth
 
 node_t* resolve_r(node_t* n) {
     if(n->parent_id == n->id) return n;
@@ -158,12 +184,13 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
 matd_t* dist_homography(int* pix)
 {
     zarray_t* correspondences = zarray_create(sizeof(float[4]));
+    printf("\ncorrespondences\n");
     for(int i = 0; i < NUM_CHART_BLOBS; i++)
     {
-        float tmp[4] = {pix[i*2], pix[i*2+1], 
-                        xy_plane_coords[i*2], xy_plane_coords[i*2+1]};
+        float tmp[4] = {xy_plane_coords[i*2], xy_plane_coords[i*2+1], 
+                        pix[i*2], pix[i*2+1]};
         zarray_add(correspondences, &tmp);
-    }
+        printf("%f %f %f %f \n", tmp[0], tmp[1], tmp[2], tmp[3]);    }
     matd_t * H = homography_compute(correspondences);
     return(H);
 }
@@ -192,6 +219,48 @@ int compare(const void* a, const void* b)
         return(1);
     return(0);
 }
+
+
+void project_measurements_through_homography(matd_t* H, vx_buffer_t* buf,
+        zarray_t* pix_found)
+{
+    int npoints = NUM_CHART_BLOBS * 2;          //  line per chart blob
+    float points[npoints*3];
+
+    for(int i = 0; i < NUM_CHART_BLOBS; i++) {
+        // run each real world point through homography and add to buf
+        
+        double tmp[3] = {xy_plane_coords[i*2], xy_plane_coords[i*2+1], 1};
+        matd_t* xy_matrix = matd_create_data(3,1,tmp);
+        matd_t* pix_estimated = matd_op("(M)*M",H, xy_matrix);
+        MATD_EL(pix_estimated,0,0) /= MATD_EL(pix_estimated,2, 0);
+        MATD_EL(pix_estimated,1,0) /= MATD_EL(pix_estimated,2, 0);
+        
+        vx_buffer_add_back(buf,
+                 vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                        vxo_chain(vxo_mat_translate3(MATD_EL(pix_estimated,0,0), MATD_EL(pix_estimated,1,0), 0),
+                            vxo_mat_scale(2.0),
+                            vxo_circle(vxo_mesh_style(vx_green)))));
+
+        // create endpoints for lines
+        loc_t pos;
+        zarray_get(pix_found, i, &pos); //     
+
+        points[6*i + 0] = pos.x;
+        points[6*i + 1] = pos.y;
+        points[6*i + 2] = 0;
+        points[6*i + 3] = MATD_EL(pix_estimated,0,0);
+        points[6*i + 4] = MATD_EL(pix_estimated,1,0);
+        points[6*i + 5] = 0;
+    }
+
+    // make lines
+    vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
+    vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                    vxo_lines(verts, npoints, GL_LINES, 
+                                        vxo_points_style(vx_blue, 2.0f))));
+}
+
 
 // returns the 35 points associated to the test chart in [x1,y1,x2,y2] 
 // format if there are more than 35 points will return NULL
@@ -225,7 +294,7 @@ matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
                                 vxo_mat_scale(size),
                                 vxo_circle(vxo_mesh_style(vx_maroon)))));
         }
-        // size += .2;
+        size += .1;
         // printf("(%d, %d)\n", pos.x, pos.y);
         if(zarray_size(blobs) == NUM_CHART_BLOBS) {
             pix_array[idx*2] = pos.x;
@@ -238,9 +307,13 @@ matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
         return(NULL);
     }
 
+    matd_t* H = dist_homography(pix_array);
+
+    // make projected points
+    project_measurements_through_homography(H, buf, blobs);
     zarray_destroy(blobs);
 
-    return(dist_homography(pix_array));
+    return(H);
 }
 
 // if buf is NULL, will not fill with points of the homography
@@ -251,11 +324,14 @@ void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
     if(H == NULL) return;
 
     // get model view from homography
-    matd_t* Model = homography_to_pose(H, 949, 949, 0, 0);
+    matd_t* Model = homography_to_pose(H, (-1)*654, 655, 334, 224);
     printf("\n");
     matd_print(H, matrix_format);
     printf("\n\n");
-    matd_print(Model, matrix_format);
+    printf("model:\n");
+    matd_print(Model, "%15f");
+    // printf("\n\n");
+    // matd_print(matd_op("M^-1",Model), matrix_format);
     printf("\n");
     // extrapolate metrics from model view
     double TZ = MATD_EL(Model, 2, 3);

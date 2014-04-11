@@ -144,6 +144,8 @@ matd_t *homography_compute(zarray_t *correspondences)
         for (int j = i+1; j < 9; j++)
             MATD_EL(A, j, i) = MATD_EL(A, i, j);
 
+    matd_svd_t svd = matd_svd(A);
+    
     matd_t *Ainv = matd_inverse(A);
 
     double scale = 0;
@@ -151,11 +153,22 @@ matd_t *homography_compute(zarray_t *correspondences)
         scale += sq(MATD_EL(Ainv, i, 0));
     scale = sqrt(scale);
 
+    matd_print(svd.U, "%15.2f");
+    matd_print(svd.S, "%15.2f");
+    matd_print(svd.V, "%15.2f");
+
+    int svdidx = 0;
+    for (int i = 0; i < 9; i++)
+      if (fabs(MATD_EL(svd.S, i, i)) < fabs(MATD_EL(svd.S, svdidx, svdidx)))
+	svdidx = i;
+
     matd_t *H = matd_create(3,3);
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            MATD_EL(H, i, j) = MATD_EL(Ainv, 3*i+j, 0)/ scale;
+	  //MATD_EL(H, i, j) = MATD_EL(svd.U, svdidx, 3*i+j);
+    	  MATD_EL(H, i, j) = MATD_EL(Ainv, 3*i+j, 0)/ scale;
 
+    
     matd_t *Tx = matd_identity(3);
     MATD_EL(Tx,0,2) = -x_cx;
     MATD_EL(Tx,1,2) = -x_cy;
@@ -171,6 +184,10 @@ matd_t *homography_compute(zarray_t *correspondences)
     matd_destroy(Tx);
     matd_destroy(Ty);
     matd_destroy(H);
+
+    matd_destroy(svd.U);
+    matd_destroy(svd.S);
+    matd_destroy(svd.V);
 
     return H2;
 }

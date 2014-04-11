@@ -245,7 +245,7 @@ static void connect_g(g_node_t* n1, g_node_t* n2) {
     // n1's child nodes, are not changed to n2
 }
 
-double compare_pix(abgr_t a, abgr_t b)
+double hsv_val_diff(abgr_t a, abgr_t b)
 {
     // return(sqrt((a.r-b.r)*(a.r-b.r)+
     //             (a.b-b.b)*(a.b-b.b)+
@@ -305,7 +305,7 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         int left_buf = im->buf[idx - 1];
         abgr_t left_color = {(left_buf >> 24) & 0xff, (left_buf >> 16) & 0xff, 
                                 (left_buf >> 8) & 0xff, (left_buf) & 0xff};    
-        double diff = compare_pix(left_color, curr_pix.abgr);
+        double diff = hsv_val_diff(left_color, curr_pix.abgr);
         curr_pix.grad.x += diff;
     }
 
@@ -314,7 +314,7 @@ grad_t get_pix_gradient(image_u32_t* im, int x, int y)
         int bottom_buf = im->buf[idx - im->stride];
         abgr_t bottom_color =  {(bottom_buf >> 24) & 0xff, (bottom_buf >> 16) & 0xff, 
                                 (bottom_buf >> 8) & 0xff, (bottom_buf) & 0xff};    
-        double diff = compare_pix(bottom_color, curr_pix.abgr);
+        double diff = hsv_val_diff(bottom_color, curr_pix.abgr);
         curr_pix.grad.y += diff;
     }
 
@@ -541,7 +541,7 @@ void convert_to_grad_dir_image(image_u32_t* im, int bright, double min_mag)
     zhash_destroy(node_map);
 }
 
-double dot_product(grad_t a, grad_t b, threshold_metrics_t thresh)
+double compare_nodes(grad_t a, grad_t b, threshold_metrics_t thresh)
 {
     double mag_a = sqrt(a.x*a.x+a.y*a.y);
     if(mag_a < thresh.min_mag) {
@@ -577,12 +577,12 @@ void make_connection(zhash_t* node_map, g_node_t* curr_n, int check_idx,
     g_node_t* tmp_n;
     if(zhash_get(node_map, &check_idx, &tmp_n) != 1)
         assert(0);
-    if(dot_product(curr_n->grad, tmp_n->grad, thresh) 
+    if(compare_nodes(curr_n->grad, tmp_n->grad, thresh) 
                     < thresh.max_grad_diff ) {
         // printf("L curr:(%d, %d)--(%lf, %lf),  tmp:(%d, %d)--(%lf, %lf)   dot:%lf\n"
         //         , curr_n->loc.x, curr_n->loc.y, curr_n->grad.x, curr_n->grad.y, 
         //         tmp_n->loc.x, tmp_n->loc.y, tmp_n->grad.x, tmp_n->grad.y, 
-        //         dot_product(curr_n->grad, tmp_n->grad, thresh.min_mag));
+        //         compare_nodes(curr_n->grad, tmp_n->grad, thresh.min_mag));
         connect_g(curr_n, tmp_n);                    
     }   
 }
@@ -600,25 +600,14 @@ zhash_t* connect_nodes(image_u32_t* im, threshold_metrics_t thresh)
             zhash_get(node_map, &idx, &curr_n);
 
             // check left 
-            if(x > 0) {
-                int tmp_idx = idx - 1;
-                make_connection(node_map, curr_n, tmp_idx, thresh);
-            }
+            if(x > 0) 
+                make_connection(node_map, curr_n, (idx - 1), thresh);
             // check bottom 
-            if(y > 0) { 
-                int tmp_idx = idx - im->stride; 
-                make_connection(node_map, curr_n, tmp_idx, thresh);               
-            }
+            if(y > 0)
+                make_connection(node_map, curr_n, (idx - im->stride), thresh);               
             // check bottom left 
-            if(x > 0 && y > 0) {
-                int tmp_idx = idx - (1 + im->stride);
-                make_connection(node_map, curr_n, tmp_idx, thresh);
-            }
-            // // check top left 
-            // if(x > 0 && y < im->height-1) {
-            //     int tmp_idx = idx - (1 - im->stride);
-            //     make_connection(node_map, curr_n, tmp_idx, thresh);
-            // }  
+            if(x > 0 && y > 0)
+                make_connection(node_map, curr_n, (idx - (1 + im->stride)), thresh);
         }
     }
     return(node_map);

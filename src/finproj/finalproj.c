@@ -307,56 +307,56 @@ void* render_loop(void *data)
                     }
 
 
-                    // int num_lines = zarray_size(lines);
-                    // printf("num_lines = %d \n", num_lines);   
-                    // float color[4] = {0.3f, 0.6f, 0.9f, 1.0f};
-                    // double change = 0.3;
-                    // int npoints = num_lines * 2;
-                    // float points[npoints*3];
-                    // if(num_lines != 0) {
-                    //     for(int i = 0; i < num_lines; i++) 
-                    //     {
-                    //         line_t l;
-                    //         zarray_get(lines, i, &l);
-                    //         points[6*i + 0] = l.start.x;
-                    //         points[6*i + 1] = l.start.y;
-                    //         points[6*i + 2] = 1;
-                    //         points[6*i + 3] = l.end.x;
-                    //         points[6*i + 4] = l.end.y;
-                    //         points[6*i + 5] = 1;
-                    //         // printf("line:%d start:(%d, %d)  end:(%d, %d) \n", 
-                    //         //         i, l.start.x, l.start.y, l.end.x, l.end.y);
+                    int num_lines = zarray_size(lines);
+                    printf("num_lines = %d \n", num_lines);   
+                    float color[4] = {0.3f, 0.6f, 0.9f, 1.0f};
+                    double change = 0.3;
+                    int npoints = num_lines * 2;
+                    float points[npoints*3];
+                    if(num_lines != 0) {
+                        for(int i = 0; i < num_lines; i++) 
+                        {
+                            line_t l;
+                            zarray_get(lines, i, &l);
+                            points[6*i + 0] = l.start.x;
+                            points[6*i + 1] = l.start.y;
+                            points[6*i + 2] = 1;
+                            points[6*i + 3] = l.end.x;
+                            points[6*i + 4] = l.end.y;
+                            points[6*i + 5] = 1;
+                            // printf("line:%d start:(%d, %d)  end:(%d, %d) \n", 
+                            //         i, l.start.x, l.start.y, l.end.x, l.end.y);
 
-                    //         if(show_pix) {
+                            if(show_pix) {
 
-                    //             if((color[i%3] + change) > 1) color[i%3] = 0;
-                    //             else color[i%3]+= change;
+                                if((color[i%3] + change) > 1) color[i%3] = 0;
+                                else color[i%3]+= change;
 
-                    //             for(int j = 0; j < zarray_size(l.nodes); j++)
-                    //             {
-                    //                 g_node_t* node;
-                    //                 zarray_get(l.nodes, j, &node);
-                    //                 vx_buffer_add_back(buf,
-                    //                     vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                    //                         vxo_chain(vxo_mat_translate3(node->loc.x, node->loc.y, 1),
-                    //                                     vxo_mat_scale(1.0f),
-                    //                                     vxo_circle(vxo_mesh_style(color)))));
-                    //                 // printf("num:%d   loc:(%d, %d)  grad:(%lf, %lf)  color:(%f, %f, %f, %f)\n", i, 
-                    //                 //         node->loc.x, node->loc.y, node->grad.x, node->grad.y,
-                    //                 //         color[0], color[1], color[2], color[3]);
-                    //             }
-                    //         }
-                    //         zarray_vmap(l.nodes, free);
-                    //         zarray_destroy(l.nodes);
-                    //     }
-                    // }
+                                for(int j = 0; j < zarray_size(l.nodes); j++)
+                                {
+                                    g_node_t* node;
+                                    zarray_get(l.nodes, j, &node);
+                                    vx_buffer_add_back(buf,
+                                        vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                            vxo_chain(vxo_mat_translate3(node->loc.x, node->loc.y, 1),
+                                                        vxo_mat_scale(1.0f),
+                                                        vxo_circle(vxo_mesh_style(color)))));
+                                    // printf("num:%d   loc:(%d, %d)  grad:(%lf, %lf)  color:(%f, %f, %f, %f)\n", i, 
+                                    //         node->loc.x, node->loc.y, node->grad.x, node->grad.y,
+                                    //         color[0], color[1], color[2], color[3]);
+                                }
+                            }
+                            zarray_vmap(l.nodes, free);
+                            zarray_destroy(l.nodes);
+                        }
+                    }
 
-                    // if(add_lines) {
-                    //     vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
-                    //     vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                    //                                     vxo_lines(verts, npoints, GL_LINES, 
-                    //                                         vxo_points_style(vx_blue, 2.0f))));
-                    // }
+                    if(add_lines) {
+                        vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
+                        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                                        vxo_lines(verts, npoints, GL_LINES, 
+                                                            vxo_points_style(vx_blue, 2.0f))));
+                    }
 
                     if(homography) {
                         metrics_t met = {   .hsv = hsv,//{hsv.hue, hsv.sat, hsv.val},
@@ -404,6 +404,9 @@ void add_image(zarray_t* arr, char* name, int x, int y, int dist)
 
 void add_images(zarray_t* arr)
 {
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_640x480.pnm", 640, 480, 3);
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test2.pnm", 640, 480, 2);
+    
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_352x258.pnm", 355, 258, 1.5);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_352x258.pnm", 355, 258, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_352x258.pnm", 355, 258, 3);
@@ -414,10 +417,10 @@ void add_images(zarray_t* arr)
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_640x480.pnm", 640, 480, 3);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/4_meter_640x480.pnm", 640, 480, 4);
     
-    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_1280x720.pnm", 1280, 720, 1.5);
-    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_1280x720.pnm", 1280, 720, 2);
-    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_1280x720.pnm", 1280, 720, 3);
-    add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/4_meter_1280x720.pnm", 1280, 720, 4);
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_1280x720.pnm", 1280, 720, 1.5);
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_1280x720.pnm", 1280, 720, 2);
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/3_meter_1280x720.pnm", 1280, 720, 3);
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/4_meter_1280x720.pnm", 1280, 720, 4);
 
 }
 
@@ -507,13 +510,12 @@ int main(int argc, char **argv)
     state->target_hsv.sat = 1;
     state->target_hsv.val = 1;
     state->min_size = 15;
-    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
-    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
-    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
-    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
-    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
-    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
-    pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
+    // pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
+    // pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
+    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
+    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
+    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
+    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
     state->static_image = 1;
@@ -521,14 +523,15 @@ int main(int argc, char **argv)
     state->pic_num = 0;
     state->grad_dir_image = 0;
     state->show_homography = 0;
-    state->max_grad_diff = 13.34;        // in degrees
+    state->max_grad_diff = 11;        // in degrees
     state->brightness = 0;
-    state->min_mag = 15.4; 
-    state->blur_amount = 0;
-    // pg_add_int_slider(pg, "brightness", "Bright", 0, 50, state->brightness);
-    // pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
-    // pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 90, state->max_grad_diff);
-    // pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 100, state->min_mag);
+    state->min_mag = 6; 
+    state->blur_amount = 2;
+    pg_add_int_slider(pg, "brightness", "Bright", 0, 50, state->brightness);
+    pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
+    pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 90, state->max_grad_diff);
+    pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 100, state->min_mag);
+    pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 
                         "grad_image", "Show Grad", 0,
