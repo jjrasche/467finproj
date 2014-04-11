@@ -4,7 +4,7 @@ include ../common.mk
 CFLAGS = $(CFLAGS_STD) $(CFLAGS_COMMON) $(CFLAGS_VX) $(CFLAGS_GTK) $(CFLAGS_LCMTYPES) $(CFLAGS_LCM) $(CFLAGS_VX) -fPIC -g -O0
 LDFLAGS =  $(LDFLAGS_VX_GTK) $(LDFLAGS_VX) $(LDFLAGS_GTK) $(LDFLAGS_IMAGESOURCE) $(LDFLAGS_COMMON) $(LDFLAGS_LCMTYPES) $(LDFLAGS_LCM) $(LDFLAGS_STD)
 
-BINS= fin distortion
+BINS= fin
 TESTS= map_test move_to_point_test pid_test 
 
 UTILS = custom_util.o camera_util.o blob_util.o
