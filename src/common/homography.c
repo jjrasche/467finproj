@@ -144,17 +144,36 @@ matd_t *homography_compute(zarray_t *correspondences)
         for (int j = i+1; j < 9; j++)
             MATD_EL(A, j, i) = MATD_EL(A, i, j);
 
-    matd_t *Ainv = matd_inverse(A);
-
-    double scale = 0;
-    for (int i = 0; i < 9; i++)
-        scale += sq(MATD_EL(Ainv, i, 0));
-    scale = sqrt(scale);
 
     matd_t *H = matd_create(3,3);
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            MATD_EL(H, i, j) = MATD_EL(Ainv, 3*i+j, 0)/ scale;
+
+    if (1) {
+        // compute singular vector using SVD. A bit slower, but more accurate.
+        matd_svd_t svd = matd_svd(A);
+
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                // MATD_EL(H, i, j) = MATD_EL(Ainv, 3*i+j, 0)/ scale;
+                MATD_EL(H, i, j) = MATD_EL(svd.U, 3*i+j, 8);
+
+        matd_destroy(svd.U);
+        matd_destroy(svd.S);
+        matd_destroy(svd.V);
+
+    } else {
+        // compute singular vector by (carefully) inverting the rank-deficient matrix.
+        matd_t *Ainv = matd_inverse(A);
+        double scale = 0;
+        for (int i = 0; i < 9; i++)
+            scale += sq(MATD_EL(Ainv, i, 0));
+        scale = sqrt(scale);
+
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                MATD_EL(H, i, j) = MATD_EL(Ainv, 3*i+j, 0)/ scale;
+
+        matd_destroy(Ainv);
+    }
 
     matd_t *Tx = matd_identity(3);
     MATD_EL(Tx,0,2) = -x_cx;
@@ -167,7 +186,6 @@ matd_t *homography_compute(zarray_t *correspondences)
     matd_t *H2 = matd_op("M*M*M", Ty, H, Tx);
 
     matd_destroy(A);
-    matd_destroy(Ainv);
     matd_destroy(Tx);
     matd_destroy(Ty);
     matd_destroy(H);
@@ -213,8 +231,6 @@ void homography_project(const matd_t *H, double x, double y, double *ox, double 
 
 matd_t *homography_to_pose(const matd_t *H, double fx, double fy, double cx, double cy)
 {
-    matd_t *M = matd_create(4,4);
-
     // Note that every variable that we compute is proportional to the scale factor of H.
     double R20 = MATD_EL(H, 2, 0);
     double R21 = MATD_EL(H, 2, 1);
@@ -251,13 +267,42 @@ matd_t *homography_to_pose(const matd_t *H, double fx, double fy, double cx, dou
     double R12 = R20*R01 - R00*R21;
     double R22 = R00*R11 - R10*R01;
 
-    // TODO XXX: Improve rotation matrix by applying polar decomposition.
+    // Improve rotation matrix by applying polar decomposition.
+    if (1) {
+        // do polar decomposition. This makes the rotation matrix
+        // "proper", but probably increases the reprojection error. An
+        // iterative alignment step would be superior.
+
+        matd_t *R = matd_create_data(3, 3, (double[]) { R00, R01, R02,
+                                                       R10, R11, R12,
+                                                       R20, R21, R22 });
+
+        matd_svd_t svd = matd_svd(R);
+        matd_destroy(R);
+
+        R = matd_op("M*M'", svd.U, svd.V);
+
+        matd_destroy(svd.U);
+        matd_destroy(svd.S);
+        matd_destroy(svd.V);
+
+        R00 = MATD_EL(R, 0, 0);
+        R01 = MATD_EL(R, 0, 1);
+        R02 = MATD_EL(R, 0, 2);
+        R10 = MATD_EL(R, 1, 0);
+        R11 = MATD_EL(R, 1, 1);
+        R12 = MATD_EL(R, 1, 2);
+        R20 = MATD_EL(R, 2, 0);
+        R21 = MATD_EL(R, 2, 1);
+        R22 = MATD_EL(R, 2, 2);
+
+        matd_destroy(R);
+    }
 
     return matd_create_data(4, 4, (double[]) { R00, R01, R02, TX,
                                                R10, R11, R12, TY,
                                                R20, R21, R22, TZ,
                                                 0, 0, 0, 1 });
-    return M;
 }
 
 // Similar to above
