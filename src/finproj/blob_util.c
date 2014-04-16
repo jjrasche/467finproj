@@ -4,57 +4,57 @@
 #include "../common/homography.h"
 
 char* matrix_format = "%15.5f";
-// float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  0,      0,
-//                                                 17,     0,
-//                                                 34,     0,
-//                                                 51,     0,
-//                                                 68,     0,
-//                                                 0,      17,
-//                                                 17,     17,
-//                                                 34,     17,
-//                                                 51,     17,
-//                                                 68,     17,
-//                                                 0,      34,
-//                                                 17,     34,
-//                                                 34,     34,
-//                                                 51,     34,
-//                                                 68,     34,
-//                                                 0,      51,
-//                                                 17,     51,
-//                                                 34,     51,
-//                                                 51,     51,
-//                                                 68,     51,
-//                                                 0,      68,
-//                                                 17,     68,
-//                                                 34,     68,
-//                                                 51,     68,
-//                                                 68,     68};
+float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  0,      0,
+                                                17,     0,
+                                                34,     0,
+                                                51,     0,
+                                                68,     0,
+                                                0,      17,
+                                                17,     17,
+                                                34,     17,
+                                                51,     17,
+                                                68,     17,
+                                                0,      34,
+                                                17,     34,
+                                                34,     34,
+                                                51,     34,
+                                                68,     34,
+                                                0,      51,
+                                                17,     51,
+                                                34,     51,
+                                                51,     51,
+                                                68,     51,
+                                                0,      68,
+                                                17,     68,
+                                                34,     68,
+                                                51,     68,
+                                                68,     68};
 
-float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  -1,      -1,        //lower left
-                                               -.5,      -1,
-                                                 0,      -1,
-                                                .5,      -1,
-                                                 1,      -1,
-                                                -1,     -.5,
-                                               -.5,     -.5,
-                                                 0,     -.5,
-                                                .5,     -.5,
-                                                 1,     -.5,
-                                                -1,       0,
-                                               -.5,       0,
-                                                 0,       0,
-                                                .5,       0,
-                                                 1,       0,
-                                                -1,      .5,
-                                               -.5,      .5,
-                                                 0,      .5,
-                                                .5,      .5,
-                                                 1,      .5,
-                                                -1,       1,
-                                               -.5,       1,
-                                                 0,       1,
-                                                .5,       1,
-                                                 1,       1,};       // upper rigth
+// float xy_plane_coords[NUM_CHART_BLOBS * 2] = {  -1,      -1,        //lower left
+//                                                -.5,      -1,
+//                                                  0,      -1,
+//                                                 .5,      -1,
+//                                                  1,      -1,
+//                                                 -1,     -.5,
+//                                                -.5,     -.5,
+//                                                  0,     -.5,
+//                                                 .5,     -.5,
+//                                                  1,     -.5,
+//                                                 -1,       0,
+//                                                -.5,       0,
+//                                                  0,       0,
+//                                                 .5,       0,
+//                                                  1,       0,
+//                                                 -1,      .5,
+//                                                -.5,      .5,
+//                                                  0,      .5,
+//                                                 .5,      .5,
+//                                                  1,      .5,
+//                                                 -1,       1,
+//                                                -.5,       1,
+//                                                  0,       1,
+//                                                 .5,       1,
+//                                                  1,       1,};       // upper rigth
 
 node_t* resolve_r(node_t* n) {
     if(n->parent_id == n->id) return n;
@@ -184,13 +184,14 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
 matd_t* dist_homography(int* pix)
 {
     zarray_t* correspondences = zarray_create(sizeof(float[4]));
-    printf("\ncorrespondences\n");
+    // printf("\ncorrespondences\n");
     for(int i = 0; i < NUM_CHART_BLOBS; i++)
     {
         float tmp[4] = {xy_plane_coords[i*2], xy_plane_coords[i*2+1], 
                         pix[i*2], pix[i*2+1]};
         zarray_add(correspondences, &tmp);
-        printf("%f %f %f %f \n", tmp[0], tmp[1], tmp[2], tmp[3]);    }
+        // printf("%f %f %f %f \n", tmp[0], tmp[1], tmp[2], tmp[3]);    
+    }
     matd_t * H = homography_compute(correspondences);
     return(H);
 }
@@ -324,7 +325,7 @@ void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
     if(H == NULL) return;
 
     // get model view from homography
-    matd_t* Model = homography_to_pose(H, (-1)*654, 655, 334, 224);
+    matd_t* Model = homography_to_pose(H, 654, 655, 334, 224);
     printf("\n");
     matd_print(H, matrix_format);
     printf("\n\n");

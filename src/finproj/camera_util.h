@@ -20,8 +20,8 @@
 typedef struct grad grad_t;
 struct grad
 {
-    double x;
-    double y;
+    int x;
+    int y;
 };
 
 
@@ -47,6 +47,7 @@ struct g_node
     g_node_t *parent_node;
     loc_t loc;
     grad_t grad;
+    int size;
 };
 
 typedef struct abgr abgr_t;
@@ -89,6 +90,8 @@ struct threshold_metric
     double max_grad_diff;
     int min_size;
     double min_mag;
+    int connection_method;
+    int dilate;
 };
 
 typedef struct frame frame_t;
@@ -117,22 +120,40 @@ struct node {
     int num_children;
 };
 
+typedef struct image image_t;
+struct image
+{
+    char name[200];
+    loc_t size;
+    double dist;
+};
+
+typedef struct connection connection_t;
+struct connection
+{
+    double length;
+    loc_t start;
+    loc_t end;
+};
 
 
 image_u32_t* blur_image(image_u32_t* im, int num_passes);
 
 void flip_image(image_u32_t* im, image_u32_t* flipped);
 
-void convert_to_grad_image(image_u32_t* im, int bright);
+void convert_to_grad_image(image_u32_t* im, int bright, threshold_metrics_t thresh);
 
-void convert_to_grad_dir_image(image_u32_t* im, int bright, double mag); 
+void convert_to_grad_dir_image(image_u32_t* im, int bright, threshold_metrics_t thresh); 
 
-void capture_image(image_u32_t *im, int num);
+void capture_image(zarray_t* arr, image_u32_t *im, int num);
 
 void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, 
                             metrics_t metric, zarray_t* blobs_out);
 
 void test_build_line();
+
+void add_image(zarray_t* arr, char* name, int x, int y, int dist);
+
 
 // passes in an image to form segementation image, if NULL does nothing
 zarray_t* form_lines(image_u32_t*im, threshold_metrics_t thresh, image_u32_t* seg_image);

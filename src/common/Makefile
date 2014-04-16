@@ -15,7 +15,8 @@ COMMON_OBJS = getopt.o gps_linearize.o ioutils.o math_util.o \
 
 LIBCOMMON=$(LIB_PATH)/libcommon.a
 
-all: $(LIBCOMMON) ../../bin/c5 ed_test
+all: $(LIBCOMMON) ../../bin/c5
+# ed_test
 
 ED_TEST_OBJS = ed_test.o matd.o zarray.o homography.o
 ed_test: $(ED_TEST_OBJS)
