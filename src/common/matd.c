@@ -1443,6 +1443,12 @@ static matd_svd_t matd_svd_tall(matd_t *A)
     //   LS2  * B2 * RS2'    =
     //    U     S     V'
     for (int i = 0; i < A->ncols; i++) {
+      //        MATD_EL(LP, idxs[i], idxs[i]) = 0; // undo the identity above
+      //        MATD_EL(RP, idxs[i], idxs[i]) = 0;
+
+      //        MATD_EL(LP, idxs[i], i) = vals[i] < 0 ? -1 : 1;
+      //        MATD_EL(RP, idxs[i], i) = 1; //vals[i] < 0 ? -1 : 1;
+
         MATD_EL(LP, i, i) = 0; // undo the identity above
         MATD_EL(RP, i, i) = 0;
 
