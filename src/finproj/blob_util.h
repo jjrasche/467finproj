@@ -9,7 +9,7 @@ char* matrix_format;
 int compare(const void* a, const void* b);
 
 void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, 
-									metrics_t met, zarray_t* blobs_out);
+                            metrics_t metric, zarray_t* blobs_out, vx_buffer_t* buf);
 
 void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met);
 

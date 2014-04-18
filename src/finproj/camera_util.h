@@ -57,10 +57,10 @@ struct g_node
 typedef struct abgr abgr_t;
 struct abgr
 {
-    uint8_t a;
-    uint8_t b;
-    uint8_t g;
-    uint8_t r;
+    int a;
+    int b;
+    int g;
+    int r;
 };
 
 typedef struct pixel pixel_t;
@@ -121,6 +121,7 @@ struct metric
   hsv_calib_t* hsv_data;
   int min_size;
   double std_dev_from_square;
+  int qualify;
   int lines;
   int add_lines;
 };
@@ -160,6 +161,8 @@ struct connection
 };
 
 
+int in_range(image_u32_t* im, int x, int y);
+
 image_u32_t* blur_image(image_u32_t* im, int num_passes);
 
 void flip_image(image_u32_t* im, image_u32_t* flipped);
@@ -169,9 +172,6 @@ void convert_to_grad_image(image_u32_t* im, int bright, threshold_metrics_t thre
 void convert_to_grad_dir_image(image_u32_t* im, int bright, threshold_metrics_t thresh); 
 
 void capture_image(zarray_t* arr, image_u32_t *im, int num);
-
-void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, 
-                            metrics_t metric, zarray_t* blobs_out);
 
 void test_build_line();
 

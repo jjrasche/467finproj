@@ -65,6 +65,7 @@ struct state
     int show_homography;
     int connection_method;
     int blob_detect;
+    int qualify;
     double square_variation;
 
     loc_t clicked_loc;
@@ -210,6 +211,9 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("dilate_im", name)) {
         state->dilate_im = pg_gb(pg,name);
     }   
+    if (!strcmp("qualify", name)) {
+        state->qualify = pg_gb(pg,name);
+    }   
     if (!strcmp("show_pix", name)) {
         int tmp = state->show_pix;
         state->show_pix = pg_gb(pg,name);
@@ -304,6 +308,7 @@ void* render_loop(void *data)
                     int dilate_im = state->dilate_im;
                     blob_detect = state->blob_detect;
                     double var = state->square_variation;
+                    int qualify = state->qualify;
                     pthread_mutex_unlock(&mutex);
 
                     image_u32_t* flipped = image_u32_create(im->width, im->height);
@@ -327,6 +332,7 @@ void* render_loop(void *data)
                     metrics_t met = {   .hsv_data = hsv_calib,//{max_hsv_diff.hue, max_hsv_diff.sat, max_hsv_diff.val},
                                         .min_size = min_size,
                                         .std_dev_from_square = var,
+                                        .qualify = qualify,
                                         .lines = 0,
                                         .add_lines = add_lines
                                     };
@@ -561,23 +567,23 @@ int main(int argc, char **argv)
     calibs[TARGETCOLOR].hsv.hue = 68;
     calibs[TARGETCOLOR].hsv.sat = .81;
     calibs[TARGETCOLOR].hsv.val = .68;
-    calibs[TARGETCOLOR].error.hue = 12;
+    calibs[TARGETCOLOR].error.hue = 15;
     calibs[TARGETCOLOR].error.sat = .4;
     calibs[TARGETCOLOR].error.val = .3;
 
     calibs[BLACKBACKGROUND].hsv.hue = 180;
-    calibs[BLACKBACKGROUND].hsv.sat = .2;
-    calibs[BLACKBACKGROUND].hsv.val = .1;
-    calibs[BLACKBACKGROUND].error.hue = 180;
-    calibs[BLACKBACKGROUND].error.sat = .3;
-    calibs[BLACKBACKGROUND].error.val = .3;
+    calibs[BLACKBACKGROUND].hsv.sat = .1;
+    calibs[BLACKBACKGROUND].hsv.val = .215;
+    calibs[BLACKBACKGROUND].error.hue = 360;
+    calibs[BLACKBACKGROUND].error.sat = .2;
+    calibs[BLACKBACKGROUND].error.val = .2;
 
-    calibs[ALUMINUMBACKGROUND].hsv.hue = 120;
-    calibs[ALUMINUMBACKGROUND].hsv.sat = .7;
-    calibs[ALUMINUMBACKGROUND].hsv.val = .8;
-    calibs[ALUMINUMBACKGROUND].error.hue = 50;
-    calibs[ALUMINUMBACKGROUND].error.sat = .6;
-    calibs[ALUMINUMBACKGROUND].error.val = .6;
+    calibs[ALUMINUMBACKGROUND].hsv.hue = 30;
+    calibs[ALUMINUMBACKGROUND].hsv.sat = .15;
+    calibs[ALUMINUMBACKGROUND].hsv.val = .6;
+    calibs[ALUMINUMBACKGROUND].error.hue = 40;
+    calibs[ALUMINUMBACKGROUND].error.sat = .3;
+    calibs[ALUMINUMBACKGROUND].error.val = .2;
 
     calibs[GREENTESTING].hsv.hue = 120;
     calibs[GREENTESTING].hsv.sat = 1;
@@ -588,15 +594,15 @@ int main(int argc, char **argv)
 
     state->hsv_calib_num = 0;
     state->hsv_calibrations = calibs;
-    state->square_variation = .5;
+    state->square_variation = 10;
 
     pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
-    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->hsv_calibrations[TARGETCOLOR].error.hue);
+    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 360, state->hsv_calibrations[TARGETCOLOR].error.hue);
     pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.sat);
     pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
     pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
     pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
-    pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 10, state->square_variation);
+    // pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 10, state->square_variation);
 
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
@@ -612,6 +618,7 @@ int main(int argc, char **argv)
     state->blur_amount = 0;
     state->dilate_im = 0;
     state->connection_method = 4;
+    state->qualify = 1;
     // pg_add_int_slider(pg, "brightness", "Bright", 0, 150, state->brightness);
     // pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
     // pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 360, state->max_grad_diff);
@@ -624,6 +631,7 @@ int main(int argc, char **argv)
                         // "grad_image", "Show Grad", 0,
                         "dilate_im", "Dilate", 0, 
                         "blob_detect", "BD", 0, 
+                        "qualify", "Q", 1, 
                         "grad_dir_image", "Show Grad Direction", 0,
                         "static_image", "Static Image", 1,
                         "take_image", "Take Image", 0,
