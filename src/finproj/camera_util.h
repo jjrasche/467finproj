@@ -7,6 +7,10 @@
 #define MAXDOT 180       // the oposite pointing direction 
 #define MINMAGTOPLOT 10
 #define PI 3.1415925
+#define TARGETCOLOR 0
+#define BLACKBACKGROUND 1
+#define ALUMINUMBACKGROUND 2
+#define GREENTESTING 3
 #define MIN3(x,y,z)  ((y) <= (z) ? \
                          ((x) <= (y) ? (x) : (y)) \
                      : \
@@ -82,6 +86,14 @@ struct hsv
     double sat;
     double val;
 };
+
+typedef struct hsv_calib hsv_calib_t;
+struct hsv_calib
+{
+  hsv_t hsv;
+  hsv_t error;
+};
+
 typedef struct threshold_metric threshold_metrics_t;
 struct threshold_metric
 {   
@@ -106,10 +118,19 @@ struct frame
 typedef struct metric metrics_t;
 struct metric
 {
-  hsv_t hsv;
-  hsv_t error;
+  hsv_calib_t* hsv_data;
   int min_size;
+  double std_dev_from_square;
   int lines;
+  int add_lines;
+};
+
+typedef struct box box_t;
+struct box {
+  int left;
+  int right;
+  int top;
+  int bottom;
 };
 
 typedef struct node node_t;
@@ -118,6 +139,8 @@ struct node {
     uint32_t parent_id;
     node_t *parent_node;
     int num_children;
+    loc_t ave_loc;
+    box_t box;
 };
 
 typedef struct image image_t;

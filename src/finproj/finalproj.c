@@ -29,6 +29,7 @@ Solution:   I allocated a zarray of the wrong size (ball_pos_t) and was filling
 #include "homography_botlab.h"
 #include "blob_util.h"
 #define NUM_CON_METHODS 4
+#define NUM_HSV_CALIBS 4  // yellow highlights, black background, aluminum background, green testing 
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -49,6 +50,8 @@ struct state
     int blur_amount;
     double min_mag;
     double max_grad_diff;
+    hsv_calib_t* hsv_calibrations;
+    int hsv_calib_num;
 
     int static_image;
     int grad_image;
@@ -62,6 +65,7 @@ struct state
     int show_homography;
     int connection_method;
     int blob_detect;
+    double square_variation;
 
     loc_t clicked_loc;
     zarray_t* image_array;
@@ -136,28 +140,28 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     state_t *state = pl->impl;
 
     if (!strcmp("target_h", name)) {
-        state->target_hsv.hue = pg_gd(pg,name);
-        printf("hsv:(%lf, %lf, %lf)\n", state->target_hsv.hue,
-                state->target_hsv.sat, state->target_hsv.val);
+        state->hsv_calibrations[state->hsv_calib_num].hsv.hue = pg_gd(pg,name);
+        // printf("hsv:(%lf, %lf, %lf)\n", state->target_hsv.hue,
+                // state->target_hsv.sat, state->target_hsv.val);
     }   
     if (!strcmp("target_s", name)) {
-        state->target_hsv.sat = pg_gd(pg,name);
-        printf("hsv:(%lf, %lf, %lf)\n", state->target_hsv.hue,
-                state->target_hsv.sat, state->target_hsv.val);
+        state->hsv_calibrations[state->hsv_calib_num].hsv.sat = pg_gd(pg,name);
+        // printf("hsv:(%lf, %lf, %lf)\n", state->target_hsv.hue,
+                // state->target_hsv.sat, state->target_hsv.val);
     }   
     if (!strcmp("target_v", name)) {
-        state->target_hsv.val = pg_gd(pg,name);
-        printf("hsv:(%lf, %lf, %lf)\n", state->target_hsv.hue,
-                state->target_hsv.sat, state->target_hsv.val);
+        state->hsv_calibrations[state->hsv_calib_num].hsv.val = pg_gd(pg,name);
+        // printf("hsv:(%lf, %lf, %lf)\n", state->target_hsv.hue,
+                // state->target_hsv.sat, state->target_hsv.val);
     }   
     if (!strcmp("target_h_err", name)) {
-        state->target_error.hue = pg_gd(pg,name);
+        state->hsv_calibrations[state->hsv_calib_num].error.hue = pg_gd(pg,name);
     }   
     if (!strcmp("target_s_err", name)) {
-        state->target_error.sat = pg_gd(pg,name);
+        state->hsv_calibrations[state->hsv_calib_num].error.sat = pg_gd(pg,name);
     }   
     if (!strcmp("target_v_err", name)) {
-        state->target_error.val = pg_gd(pg,name);
+        state->hsv_calibrations[state->hsv_calib_num].error.val = pg_gd(pg,name);
     }   
     if (!strcmp("min_size", name)) {
         state->min_size = pg_gi(pg,name);
@@ -182,6 +186,9 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     }    
     if (!strcmp("blob_detect", name)) {
         state->blob_detect = pg_gb(pg,name);
+    }   
+    if (!strcmp("square_variation", name)) {
+        state->square_variation = pg_gd(pg,name);
     }   
     if (!strcmp("add_lines", name)) {
         state->add_lines = pg_gb(pg,name);
@@ -223,138 +230,16 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
         printf("opened_image = %d    %d\n", state->opened_im, zarray_size(state->image_array));
     }   
 
+    if (!strcmp("next_hsv_calib", name)) {
+        state->hsv_calib_num++;
+        if(state->hsv_calib_num == NUM_HSV_CALIBS) 
+            state->hsv_calib_num = 0;
+        printf("hsv_calib_num = %d\n", state->hsv_calib_num);
+    }   
+
     pthread_mutex_unlock(&mutex);
 }
 
-
-void add_locs_to_buffer(zarray_t* locs, vx_buffer_t* buf)
-{
-    // loc_t left_most = {100000, 0}, right_most = {-1, 0}, 
-    //             top = {0, -1}, bottom = {0, 100000};
-    // for(int i = 0; i < zarray_size(locs); i++) {
-    //     loc_t pos;
-    //     zarray_get(locs, i, &pos);
-    //     printf("(%d, %d)", pos.x, pos.y);
-    //     if(pos.x < left_most.x) {
-    //         left_most.x = pos.x;
-    //         left_most.y = pos.y;
-    //         printf("  L");
-    //     }
-    //     if(pos.x > right_most.x) {
-    //         right_most.x = pos.x;
-    //         right_most.y = pos.y;
-    //         printf("  R");
-    //     }
-    //     if(pos.y < bottom.y) {
-    //         bottom.x = pos.x;
-    //         bottom.y = pos.y;
-    //         printf("  B");
-    //     }
-    //     if(pos.y > top.y) {
-    //         top.x = pos.x;
-    //         top.y = pos.y;
-    //         printf("  T");
-    //     }
-    //     printf("\n");
-    // }
-
-    for(int i = 0; i < zarray_size(locs); i++) {
-        loc_t pos;
-        zarray_get(locs, i, &pos);
-        vx_buffer_add_back(buf,
-                 vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                        vxo_chain(vxo_mat_translate3(pos.x, pos.y, 0),
-                            vxo_mat_scale(4.0f),
-                            vxo_circle(vxo_mesh_style(vx_maroon)))));
-    }
-    // vx_buffer_add_back(buf,
-    //          vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-    //                 vxo_chain(vxo_mat_translate3(left_most.x, left_most.y, 0),
-    //                     vxo_mat_scale(4.0f),
-    //                     vxo_circle(vxo_mesh_style(vx_red)))));
-    // vx_buffer_add_back(buf,
-    //          vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-    //                 vxo_chain(vxo_mat_translate3(top.x, top.y, 0),
-    //                     vxo_mat_scale(4.0f),
-    //                     vxo_circle(vxo_mesh_style(vx_green)))));
-    // vx_buffer_add_back(buf,
-    //          vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-    //                 vxo_chain(vxo_mat_translate3(right_most.x, right_most.y, 0),
-    //                     vxo_mat_scale(4.0f),
-    //                     vxo_circle(vxo_mesh_style(vx_blue)))));
-    // vx_buffer_add_back(buf,
-    //          vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-    //                 vxo_chain(vxo_mat_translate3(bottom.x, bottom.y, 0),
-    //                     vxo_mat_scale(4.0f),
-    //                     vxo_circle(vxo_mesh_style(vx_yellow)))));
-
-
-}
-
-
-void connect_lines(zarray_t* locs, vx_buffer_t* buf)
-{
-    connection_t lines[12]; 
-    int idx = 0;
-    // iterate 
-    for(int i = 0; i < zarray_size(locs); i++) {
-        loc_t curr;
-        zarray_get(locs, i, &curr);
-        for(int j = 0; j < zarray_size(locs); j++) {
-            // make a connection to every point except self and add to the lines
-            loc_t other;
-            zarray_get(locs, j, &other);
-            if(i != j) {     // not same point
-                lines[idx].start = curr;
-                lines[idx].end = other;
-                lines[idx].length = sqrt((curr.x - other.x)*(curr.x - other.x) 
-                                            + (curr.y - other.y)*(curr.y - other.y));
-                idx++;
-            }
-        }
-    }
-    // sort the array by distance
-    int flag = 1;    
-    connection_t tmp;             
-    for(int i = 0; (i < 12) && flag; i++)
-    {
-        flag = 0;       // only go over again if swap has been made
-        for(int j = 0; j < (11); j++)
-        {
-            if(lines[j+1].length < lines[j].length)      
-            { 
-                tmp = lines[j];            
-                lines[j] = lines[j+1];
-                lines[j+1] = tmp;
-                flag = 1;              
-            }
-        }
-    }
-
-    for(int i = 0; (i < 12); i++)
-    {
-        // printf("%lf\n", lines[i].length);
-    }
-
-    // usleep(2000000);
-
-    int npoints = 8;
-    float points[npoints*3];
-
-    for(int i = 0; i < 4; i++) {
-        points[6*i + 0] = lines[i*2].start.x;
-        points[6*i + 1] = lines[i*2].start.y;
-        points[6*i + 2] = 0;
-        points[6*i + 3] = lines[i*2].end.x;
-        points[6*i + 4] = lines[i*2].end.y;
-        points[6*i + 5] = 0;
-    }
-    vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
-    vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                                        vxo_lines(verts, npoints, GL_LINES, 
-                                        vxo_points_style(vx_blue, 2.0f))));
-
-}
 
 void* render_loop(void *data)
 {
@@ -407,6 +292,7 @@ void* render_loop(void *data)
                     int set_dir_grad_image = state->grad_dir_image;
                     hsv_t max_hsv_diff = state->target_error;
                     hsv_t hsv = state->target_hsv;
+                    hsv_calib_t* hsv_calib = state->hsv_calibrations;
                     static_image = state->static_image;
                     int zoom = state->zoom;
                     int seg = state->segment_image;
@@ -417,6 +303,7 @@ void* render_loop(void *data)
                     int connection_method = state->connection_method;
                     int dilate_im = state->dilate_im;
                     blob_detect = state->blob_detect;
+                    double var = state->square_variation;
                     pthread_mutex_unlock(&mutex);
 
                     image_u32_t* flipped = image_u32_create(im->width, im->height);
@@ -430,22 +317,27 @@ void* render_loop(void *data)
                         printf("hsv: (%lf, %lf, %lf) \n", hsv.hue, hsv.sat, hsv.val);
                         state->clicked_loc.x = -1;
                     }
+                    if(take_pic == 1) {
+                        pthread_mutex_lock(&mutex);
+                        capture_image(state->image_array,im, state->pic_num);
+                        state->take_image = 0;
+                        state->pic_num++;
+                        pthread_mutex_unlock(&mutex);
+                    }
+                    metrics_t met = {   .hsv_data = hsv_calib,//{max_hsv_diff.hue, max_hsv_diff.sat, max_hsv_diff.val},
+                                        .min_size = min_size,
+                                        .std_dev_from_square = var,
+                                        .lines = 0,
+                                        .add_lines = add_lines
+                                    };
                     // find and add to buffer all blobs that match a certain color
                     if(blob_detect) {
                         vx_object_t *vim = vxo_image_from_u32(flipped, 0, 0);
                         vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
 
-                        frame_t frame = {{0,0}, {im->width-1, im->height-1}, {0,0}, {1,1}};
-                        metrics_t met = {hsv, max_hsv_diff, min_size, 0};
-                        zarray_t* blobs = zarray_create(sizeof(loc_t));
-                        hsv_find_balls_blob_detector(flipped,  frame, met, blobs);
+                        // finds matching blobs, connects lines, and builds homography
+                        take_measurements(flipped, buf, met);
 
-                        if(zarray_size(blobs) == 4) {
-                            add_locs_to_buffer(blobs, buf);
-                            connect_lines(blobs, buf);
-                        }
-
-                        zarray_destroy(blobs);
                         image_u32_destroy(im);
                         image_u32_destroy(flipped);
                         vx_buffer_swap(buf);
@@ -477,7 +369,7 @@ void* render_loop(void *data)
 
 
                     int num_lines = zarray_size(lines);
-                    printf("num_lines = %d \n", num_lines);   
+                    // printf("num_lines = %d \n", num_lines);   
                     float color[4] = {0.3f, 0.6f, 0.9f, 1.0f};
                     double change = 0.1;
                     int npoints = num_lines * 2;
@@ -530,19 +422,12 @@ void* render_loop(void *data)
                                                             vxo_points_style(vx_blue, 2.0f))));
                     }
                     if(homography) {
-                        metrics_t met = {   .hsv = hsv,//{hsv.hue, hsv.sat, hsv.val},
-                                            .error = max_hsv_diff,//{max_hsv_diff.hue, max_hsv_diff.sat, max_hsv_diff.val},
-                                            .min_size = min_size,
-                                            .lines = 0
-                                        };
-                        take_measurements(flipped, buf, met);
-                    }
-                    if(take_pic == 1) {
-                        pthread_mutex_lock(&mutex);
-                        capture_image(state->image_array,im, state->pic_num);
-                        state->take_image = 0;
-                        state->pic_num++;
-                        pthread_mutex_unlock(&mutex);
+                        // metrics_t met = {   .hsv = hsv,//{hsv.hue, hsv.sat, hsv.val},
+                        //                     .error = max_hsv_diff,//{max_hsv_diff.hue, max_hsv_diff.sat, max_hsv_diff.val},
+                        //                     .min_size = min_size,
+                        //                     .lines = 0
+                        //                 };
+                        // take_measurements(flipped, buf, met);
                     }
 
                     image_u32_destroy(im);
@@ -570,7 +455,8 @@ void add_images(zarray_t* arr)
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/line3.pnm", 640, 480, 2);
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test2.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic0.pnm", 640, 480, 2);
-
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic1.pnm", 640, 480, 2);
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic2.pnm", 640, 480, 2);
 
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_352x258.pnm", 355, 258, 1.5);
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/2_meter_352x258.pnm", 355, 258, 2);
@@ -668,19 +554,50 @@ int main(int argc, char **argv)
     vx_remote_display_source_t *cxn = vx_remote_display_source_create(&state->vxapp);
     parameter_gui_t *pg = pg_create();
 
-    state->target_hsv.hue = 68;
-    state->target_hsv.sat = .81;
-    state->target_hsv.val = .68;
-    state->target_error.hue = 6;
-    state->target_error.sat = .3;
-    state->target_error.val = .47;
 
-    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->target_hsv.hue);
-    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->target_error.hue);
-    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->target_hsv.sat);
-    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->target_error.sat);
-    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->target_hsv.val);
-    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->target_error.val);
+    // hsv calibration setting (0,1,2,3) --> target color, black background, grey background, green testing
+    hsv_calib_t calibs[NUM_HSV_CALIBS];
+
+    calibs[TARGETCOLOR].hsv.hue = 68;
+    calibs[TARGETCOLOR].hsv.sat = .81;
+    calibs[TARGETCOLOR].hsv.val = .68;
+    calibs[TARGETCOLOR].error.hue = 12;
+    calibs[TARGETCOLOR].error.sat = .4;
+    calibs[TARGETCOLOR].error.val = .3;
+
+    calibs[BLACKBACKGROUND].hsv.hue = 180;
+    calibs[BLACKBACKGROUND].hsv.sat = .2;
+    calibs[BLACKBACKGROUND].hsv.val = .1;
+    calibs[BLACKBACKGROUND].error.hue = 180;
+    calibs[BLACKBACKGROUND].error.sat = .3;
+    calibs[BLACKBACKGROUND].error.val = .3;
+
+    calibs[ALUMINUMBACKGROUND].hsv.hue = 120;
+    calibs[ALUMINUMBACKGROUND].hsv.sat = .7;
+    calibs[ALUMINUMBACKGROUND].hsv.val = .8;
+    calibs[ALUMINUMBACKGROUND].error.hue = 50;
+    calibs[ALUMINUMBACKGROUND].error.sat = .6;
+    calibs[ALUMINUMBACKGROUND].error.val = .6;
+
+    calibs[GREENTESTING].hsv.hue = 120;
+    calibs[GREENTESTING].hsv.sat = 1;
+    calibs[GREENTESTING].hsv.val = .6;
+    calibs[GREENTESTING].error.hue = 31.5;
+    calibs[GREENTESTING].error.sat = .61;
+    calibs[GREENTESTING].error.val = .62;
+
+    state->hsv_calib_num = 0;
+    state->hsv_calibrations = calibs;
+    state->square_variation = .5;
+
+    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
+    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 180, state->hsv_calibrations[TARGETCOLOR].error.hue);
+    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.sat);
+    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
+    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
+    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
+    pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 10, state->square_variation);
+
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
     state->static_image = 1;
@@ -696,9 +613,9 @@ int main(int argc, char **argv)
     state->dilate_im = 0;
     state->connection_method = 4;
     // pg_add_int_slider(pg, "brightness", "Bright", 0, 150, state->brightness);
-    pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
-    pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 360, state->max_grad_diff);
-    pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 255, state->min_mag);
+    // pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
+    // pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 360, state->max_grad_diff);
+    // pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 255, state->min_mag);
     pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
     // pg_add_int_slider(pg, "connection_method", "CONMETH", 1, NUM_CON_METHODS, state->connection_method);
 
@@ -716,6 +633,7 @@ int main(int argc, char **argv)
                                             NULL);
     pg_add_buttons(pg,
                    "next_image", "Next Image",
+                   "next_hsv_calib", "Next HSV Calibration",
                    NULL);
 
     int pg_add_check_boxes(parameter_gui_t *pg, const char *name, const char * desc, int is_checked, ...) __attribute__((sentinel));
