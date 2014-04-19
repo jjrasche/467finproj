@@ -108,8 +108,8 @@ static int custom_mouse_event(vx_event_handler_t *vh, vx_layer_t *vl, vx_camera_
 
     if(LEFT_BUT_PRESS) {
         pthread_mutex_lock(&mutex);
-        printf("Raw Mouse: %lf, %lf\n", mouse->x, mouse->y);
-        printf("Pos: %lf, %lf\n", pos_vec3[0], pos_vec3[1]);
+        // printf("Raw Mouse: %lf, %lf\n", mouse->x, mouse->y);
+        // printf("Pos: %lf, %lf\n", pos_vec3[0], pos_vec3[1]);
         state->clicked_loc.x = mouse->x;
         state->clicked_loc.y = mouse->y;
         pthread_mutex_unlock(&mutex);
@@ -334,7 +334,8 @@ void* render_loop(void *data)
                                         .std_dev_from_square = var,
                                         .qualify = qualify,
                                         .lines = 0,
-                                        .add_lines = add_lines
+                                        .add_lines = add_lines,
+                                        .dothis = dilate_im
                                     };
                     // find and add to buffer all blobs that match a certain color
                     if(blob_detect) {
@@ -456,11 +457,14 @@ void* render_loop(void *data)
 
 void add_images(zarray_t* arr)
 {
-    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test2.pnm", 640, 480, 3);
-    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/line5.pnm", 640, 480, 2);
-    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/line3.pnm", 640, 480, 2);
-    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test2.pnm", 640, 480, 2);
-    add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic0.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_4m.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_6m.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_10m.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/corners0.pnm", 640, 480, 3);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/corners1.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/corners2.pnm", 640, 480, 2);
+
+    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic0.pnm", 640, 480, 2);
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic1.pnm", 640, 480, 2);
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic2.pnm", 640, 480, 2);
 
@@ -564,12 +568,19 @@ int main(int argc, char **argv)
     // hsv calibration setting (0,1,2,3) --> target color, black background, grey background, green testing
     hsv_calib_t calibs[NUM_HSV_CALIBS];
 
-    calibs[TARGETCOLOR].hsv.hue = 68;
+    calibs[TARGETCOLOR].hsv.hue = 65;
     calibs[TARGETCOLOR].hsv.sat = .81;
     calibs[TARGETCOLOR].hsv.val = .68;
-    calibs[TARGETCOLOR].error.hue = 15;
+    calibs[TARGETCOLOR].error.hue = 8;
     calibs[TARGETCOLOR].error.sat = .4;
-    calibs[TARGETCOLOR].error.val = .3;
+    calibs[TARGETCOLOR].error.val = .35;
+
+    // calibs[TARGETCOLOR].hsv.hue = 65;
+    // calibs[TARGETCOLOR].hsv.sat = .6;
+    // calibs[TARGETCOLOR].hsv.val = .75;
+    // calibs[TARGETCOLOR].error.hue = 12;
+    // calibs[TARGETCOLOR].error.sat = .25;
+    // calibs[TARGETCOLOR].error.val = .15;
 
     calibs[BLACKBACKGROUND].hsv.hue = 180;
     calibs[BLACKBACKGROUND].hsv.sat = .1;
@@ -602,11 +613,11 @@ int main(int argc, char **argv)
     pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
     pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
     pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
-    // pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 10, state->square_variation);
+    pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 50, state->square_variation);
 
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
-    state->static_image = 1;
+    state->static_image = 0;
     state->take_image = 0;
     state->pic_num = 0;
     state->grad_dir_image = 0;
@@ -614,24 +625,25 @@ int main(int argc, char **argv)
     state->max_grad_diff = 8;        // in degrees
     state->brightness = 20;
     state->min_mag = 6.5; 
-    state->min_size = 10;
+    state->min_size = 200;
     state->blur_amount = 0;
     state->dilate_im = 0;
     state->connection_method = 4;
-    state->qualify = 1;
+    state->qualify = 0;
+    state->blob_detect = 1;
     // pg_add_int_slider(pg, "brightness", "Bright", 0, 150, state->brightness);
     // pg_add_int_slider(pg, "blur_amount", "Blur", 0, 10, state->blur_amount);
     // pg_add_double_slider(pg, "grad_error", "Grad Dir Error", 0, 360, state->max_grad_diff);
     // pg_add_double_slider(pg, "min_mag", "Min Magnitude", 0, 255, state->min_mag);
-    pg_add_int_slider(pg, "min_size", "Size", 0, 300, state->min_size);
+    pg_add_int_slider(pg, "min_size", "Size", 0, 1000, state->min_size);
     // pg_add_int_slider(pg, "connection_method", "CONMETH", 1, NUM_CON_METHODS, state->connection_method);
 
     pg_add_check_boxes(pg,
                         "add_lines", "Lines", 0, 
                         // "grad_image", "Show Grad", 0,
                         "dilate_im", "Dilate", 0, 
-                        "blob_detect", "BD", 0, 
-                        "qualify", "Q", 1, 
+                        "blob_detect", "BD", 1, 
+                        "qualify", "Q", 0, 
                         "grad_dir_image", "Show Grad Direction", 0,
                         "static_image", "Static Image", 1,
                         "take_image", "Take Image", 0,

@@ -124,6 +124,7 @@ struct metric
   int qualify;
   int lines;
   int add_lines;
+  int dothis;
 };
 
 typedef struct box box_t;
@@ -134,6 +135,12 @@ struct box {
   int bottom;
 };
 
+typedef struct row_side row_sides_t;
+struct row_side {
+  loc_t leftmost;
+  loc_t rightmost;
+};
+
 typedef struct node node_t;
 struct node {
     uint32_t id;
@@ -142,6 +149,7 @@ struct node {
     int num_children;
     loc_t ave_loc;
     box_t box;
+    row_sides_t* sides;
 };
 
 typedef struct image image_t;
@@ -159,6 +167,8 @@ struct connection
     loc_t start;
     loc_t end;
 };
+
+
 
 
 int in_range(image_u32_t* im, int x, int y);
