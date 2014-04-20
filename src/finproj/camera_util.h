@@ -34,6 +34,7 @@ struct loc
 {
     int x;
     int y;
+    int valid;
 };
 
 typedef struct vec vec_t;

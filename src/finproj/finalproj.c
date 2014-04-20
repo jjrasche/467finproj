@@ -457,6 +457,8 @@ void* render_loop(void *data)
 
 void add_images(zarray_t* arr)
 {
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic1.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic0.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_4m.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_6m.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_10m.pnm", 640, 480, 2);
@@ -464,8 +466,6 @@ void add_images(zarray_t* arr)
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/corners1.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/corners2.pnm", 640, 480, 2);
 
-    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic0.pnm", 640, 480, 2);
-    // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic1.pnm", 640, 480, 2);
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic2.pnm", 640, 480, 2);
 
     // add_image(arr, "/home/jjrasche/finalProject/src/finproj/test_images/1_5_meter_352x258.pnm", 355, 258, 1.5);
@@ -605,7 +605,7 @@ int main(int argc, char **argv)
 
     state->hsv_calib_num = 0;
     state->hsv_calibrations = calibs;
-    state->square_variation = 10;
+    state->square_variation = 5;
 
     pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
     pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 360, state->hsv_calibrations[TARGETCOLOR].error.hue);
@@ -617,7 +617,7 @@ int main(int argc, char **argv)
 
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
-    state->static_image = 0;
+    state->static_image = 1;
     state->take_image = 0;
     state->pic_num = 0;
     state->grad_dir_image = 0;

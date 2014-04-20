@@ -65,6 +65,190 @@ float target_coords[NUM_TARGETS * 2] = {    0,  0,
 //                                                 .5,       1,
 //                                                  1,       1,};       // upper rigth
 
+void add_arr_of_locs_to_buffer(zarray_t* arr, vx_buffer_t* buf, double size, 
+                                const float* color, metrics_t met);
+void add_circle_to_buffer(vx_buffer_t* buf, double size, loc_t loc, const float* color);
+
+int get_slope(loc_t a , loc_t b, int add_line, int reverse, vx_buffer_t* buf) 
+{
+
+    if(add_line) {
+        int npoints = 2;
+        float points[npoints*3];
+
+        points[0] = a.x;
+        points[1] = a.y;
+        points[2] = 0;
+        points[3] = b.x;
+        points[4] = b.y;
+        points[5] = 0;
+
+        vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
+        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                            vxo_lines(verts, npoints, GL_LINES, 
+                                            vxo_points_style(vx_blue, 2.0f))));   
+    }
+
+    if(reverse) {
+        if((a.y - b.y) == 0)
+            return((a.x - b.x)/.0001);
+        int ret = (a.x - b.x) /  (a.y - b.y); 
+        return(ret);
+    }
+    if((a.x - b.x) == 0)
+        return((a.y - b.y)/.0001);
+    int ret = (a.y - b.y) /  (a.x - b.x); 
+    return(ret); 
+}
+
+double dist_from_point_to_line(loc_t* p1, loc_t* p2, loc_t* check)
+{
+    double dist = ((p2->x - p1->x)*(p1->y - check->y) - (p1->x - check->x)*(p2->y-p1->y)) /
+                    (sqrt((p2->x - p1->x)*(p2->x - p1->x) + (p2->y - p1->y)*(p2->y - p1->y)));
+    return(dist);
+}
+
+void add_line_to_buffer(image_u32_t* im, vx_buffer_t* buf, double size, 
+                        loc_t p1, loc_t p2, const float* color)
+{
+    int npoints = 2;          //  line per chart blob
+    float points[npoints*3];
+
+    points[0] = p1.x;
+    points[1] = p1.y;
+    points[2] = 0;
+    points[3] = p2.x;
+    points[4] = p2.y;
+    points[5] = 0;
+
+    // make lines
+    vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
+    vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
+                                    vxo_lines(verts, npoints, GL_LINES, 
+                                        vxo_points_style(color, size))));
+}
+
+void reset_locs(zarray_t* locs)
+{
+    for(int i = 0; i < zarray_size(locs); i++) {
+        loc_t* tmp;
+        zarray_get(locs, i, &tmp);
+        tmp->valid = 0;
+    }
+}
+
+loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
+{
+    srand(time(NULL));
+    // isolate valid entries 
+    zarray_t* loc_arr = zarray_create(sizeof(loc_t*));
+   
+    for(int i = 0; i < (im->height-1); i++) {
+        if(n->sides[i].leftmost.x == im->width) continue;        // not apart of blob
+
+
+        loc_t* loc = malloc(sizeof(loc_t));
+        loc->x = n->sides[i].leftmost.x;
+        loc->y = n->sides[i].leftmost.y;
+        loc->valid = 0;
+        zarray_add(loc_arr, &loc);
+    }
+
+    for(int i = 0; i < (im->height-1); i++) {
+        if(n->sides[i].rightmost.x == -1) continue;
+
+        loc_t* loc = malloc(sizeof(loc_t));
+        loc->x = n->sides[i].rightmost.x;
+        loc->y = n->sides[i].rightmost.y;
+        loc->valid = 0;
+        zarray_add(loc_arr, &loc);
+    }
+
+    // printf("\n\nall\n");
+    // for(int i = 0; i < zarray_size(loc_arr); i++)
+    // {
+    //     loc_t* p1;
+    //     zarray_get(loc_arr, i, &p1);
+    //     printf("(%d, %d)\n", p1->x, p1->y);
+    // }
+    // printf("\n\n");
+
+    int best_score = 0;
+    int lines_found = 0;
+    loc_t line_match[8];
+    while(lines_found < 2)      // still a lot of points left 
+    {  
+        // reset image and array
+        vx_object_t *vim = vxo_image_from_u32(im, 0, 0);
+        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
+        add_arr_of_locs_to_buffer(loc_arr, buf, 1.0, vx_black, met);
+
+        while(best_score < ((zarray_size(loc_arr)-1)/(4 - lines_found)))
+        {
+            reset_locs(loc_arr);
+            // pick random sample (2 points)
+            loc_t* p1;
+            loc_t* p2;
+            zarray_get(loc_arr, (rand()%zarray_size(loc_arr)), &p1);
+            p2 = p1;
+            while(p1 == p2)
+                zarray_get(loc_arr, (rand()%zarray_size(loc_arr)), &p2);    // don't get same point
+
+            // find consensus score of line from other points 
+            // if inside consensus range add 1
+            int tmp_score = 0;
+            for(int j = 0; j < zarray_size(loc_arr); j++) {
+                loc_t* tmp;
+                zarray_get(loc_arr, j, &tmp);
+                if(fabs(dist_from_point_to_line(p1, p2, tmp)) < met.std_dev_from_square) 
+                {
+                    tmp->valid = 1;
+                    // printf("dist: %lf\n", fabs(dist_from_point_to_line(p1, p2, tmp)));
+                    tmp_score++;
+                }
+            }
+            // keep best line so far 
+            if(tmp_score > best_score) {
+                best_score = tmp_score;
+                printf("      score:%d,  %d,  %d\n", best_score, zarray_size(loc_arr), 
+                                                    (zarray_size(loc_arr)-1)/4);
+                line_match[lines_found*2] = *p1;
+                line_match[lines_found*2+1] = *p2;
+            }
+        }
+        add_line_to_buffer(im, buf, 2.0, line_match[lines_found*2], line_match[lines_found*2+1], vx_yellow);
+        // delete all points associated with the found line
+        for(int i = 0; i < zarray_size(loc_arr); i++) {
+            loc_t* tmp;
+            zarray_get(loc_arr, i, &tmp);
+
+            if(tmp->valid) 
+            {
+                add_circle_to_buffer(buf,  1.0, *tmp, vx_red);
+                zarray_remove_index(loc_arr, i, 0);
+            }
+        }
+        lines_found++;
+        best_score = 0;
+        vx_buffer_swap(buf);
+        usleep(5000000);
+
+    }
+
+    zarray_destroy(loc_arr);
+    for(int i = 0; i < lines_found; i++) {
+        add_line_to_buffer(im, buf, 2.0, line_match[i*2], line_match[i*2+1], vx_yellow);
+    }
+
+
+    // printf("(%d, %d) (%d, %d)   %lf\n", line_match[0].x, line_match[0].y, 
+    //                                     line_match[1].x, line_match[1].y, 
+    //                                     (double)best_score/N);
+
+    return(line_match);
+
+}
+
 
 void add_circle_to_buffer(vx_buffer_t* buf, double size, loc_t loc, const float* color)
 {
@@ -75,15 +259,88 @@ void add_circle_to_buffer(vx_buffer_t* buf, double size, loc_t loc, const float*
                         vxo_circle(vxo_mesh_style(color)))));
 }
 
-void add_sides_to_buffer(image_u32_t* im, vx_buffer_t* buf, double size, 
-                            node_t* n, const float* color)
+void add_arr_of_locs_to_buffer(zarray_t* arr, vx_buffer_t* buf, double size, 
+                                const float* color, metrics_t met)
 {
-    // go over each row and add circles where left/right most are
-    for(int i = 0; i < im->height; i++) {
-        add_circle_to_buffer(buf, size, n->sides[i].leftmost, color);
-        add_circle_to_buffer(buf, size, n->sides[i].rightmost, color);
+    for(int i = 0; i < zarray_size(arr); i++)
+    {
+        loc_t* tmp;
+        zarray_get(arr, i, &tmp);
+        add_circle_to_buffer(buf, size, *tmp, color);
     }
 }
+
+void add_sides_to_buffer(image_u32_t* im, vx_buffer_t* buf, double size, 
+                            node_t* n, const float* color, metrics_t met)
+{
+    // go over each row and add circles where left/right most are
+    loc_t ll;
+    int ll_large = im->width;
+
+    for(int i = 0; i < im->height; i++) {
+        add_circle_to_buffer(buf, size, n->sides[i].leftmost, color);
+        // if(n->sides[i].leftmost.x  < ll_large) {
+        //     ll = n->sides[i].leftmost;
+        //     ll_large = n->sides[i].leftmost.x;
+        // }
+
+        // add_circle_to_buffer(buf, size, n->sides[i].rightmost, color);
+    }
+
+    // add_circle_to_buffer(buf, 4.0, ll, vx_blue);
+
+
+
+    // // test slopes
+    // int found = 0;
+    // double prev_slope = get_slope(n->sides[0].leftmost, n->sides[1].leftmost, 0, 1, NULL);
+    // int dist = 5;
+    // for(int i = 0; i < (im->height-1); i+=dist) {
+    //     if(n->sides[i].leftmost.x == im->width || n->sides[i+dist].leftmost.x == im->width) {  // if comparing side is not really a side, do not
+    //         if(found) 
+    //         {
+    //             return;
+    //         }
+    //         continue;
+    //     }
+    //     found = 1; 
+    //     double curr_slope = get_slope(n->sides[i].leftmost, n->sides[i+dist].leftmost, 0, 1, NULL);
+    //     printf("slope: (%d, %d)  (%d, %d)  %lf)\n", n->sides[i].leftmost.x, n->sides[i].leftmost.y,
+    //     n->sides[i+dist].leftmost.x, n->sides[i+dist].leftmost.y,((prev_slope) - (curr_slope)));
+
+    //     // if(fabs(fabs(prev_slope) - fabs(curr_slope)) > met.std_dev_from_square) {
+    //     //     add_circle_to_buffer(buf, 3.0, n->sides[i].leftmost, vx_black);
+    //     // }
+    // }
+
+    
+    // // build slope and pixel error to slope moving up the image, when error begins to get worse, that is the turning point
+    // int found = 0;
+    // int start_point = 0;
+    // for(int i = 0; i < (im->height-1); i++) {
+    //     while(n->sides[i].leftmost.x == im->width) continue;        //beginning of blob
+
+    //     // find slope of startpoint and i
+    //     // m = (n->sides[start_point].leftmost.y - n->sides[i].leftmost.y) / 
+    //     //     (n->sides[start_point].leftmost.x - n->sides[i].leftmost.x);
+
+    //     //compare prev line fit error to curr
+    //     double error_sum = 0.0;
+    //     loc_t start_loc = {n->sides[start_point].leftmost.x, n->sides[start_point].leftmost.y};
+    //     loc_t end_loc = {n->sides[i].leftmost.x, n->sides[i].leftmost.y};
+
+    //     for(int j = start_point; j < (im->height-1); j++) {    //find error to new line
+    //         loc_t check_loc = {n->sides[j].leftmost.x, n->sides[j].leftmost.y};
+
+    //         error_sum += dist_from_point_to_line(start_loc, end_loc, check_loc);
+    //     }
+
+
+    //     if(found &&  n->sides[i].leftmost.x == im->width) break;    // end of blob
+    // }
+
+}
+
 
 
 node_t* resolve_r(node_t* n) {
@@ -297,31 +554,6 @@ void is_extreme(box_t* extremes, int x, int y)
 
 }
 
-int get_slope(loc_t a , loc_t b, int add_line, vx_buffer_t* buf) 
-{
-    if(add_line) {
-        int npoints = 2;
-        float points[npoints*3];
-
-        points[0] = a.x;
-        points[1] = a.y;
-        points[2] = 0;
-        points[3] = b.x;
-        points[4] = b.y;
-        points[5] = 0;
-
-        vx_resc_t *verts = vx_resc_copyf(points, npoints*3);
-        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT,
-                                            vxo_lines(verts, npoints, GL_LINES, 
-                                            vxo_points_style(vx_blue, 2.0f))));   
-    }
-
-    if((a.x - b.x) == 0)
-        return(10);
-    int ret = (a.y - b.y) /  (a.x - b.x); 
-    return(ret); 
-}
-
 // form arguments for homography_compute and return the homography matrix
 matd_t* dist_homography(int* pix, int size)
 {
@@ -377,6 +609,7 @@ row_sides_t* init_row_sides(image_u32_t* im)
         ret[i].leftmost.x = im->width;
         ret[i].rightmost.x = -1;
         ret[i].rightmost.y = ret[i].leftmost.y = i;
+        ret[i].rightmost.valid = ret[i].leftmost.valid = 0;
     }
     return(ret);
 }
@@ -617,7 +850,9 @@ matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
             add_circle_to_buffer(buf, size, center, vx_maroon);
             add_circle_to_buffer(buf, size, parent, vx_olive);
 
-            add_sides_to_buffer(im, buf, 1.0, &n, vx_orange);
+            // add_sides_to_buffer(im, buf, 1.0, &n, vx_orange, met);
+            loc_t* line = fit_lines(im, &n, buf, met);
+
             free(n.sides);
 
             loc_t corners[4] = {{n.box.right, n.box.top},
