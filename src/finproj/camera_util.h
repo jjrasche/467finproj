@@ -126,6 +126,8 @@ struct metric
   int lines;
   int add_lines;
   int dothis;
+  int num_outliers;
+  double consensus_accuracy;
 };
 
 typedef struct box box_t;

@@ -143,7 +143,7 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
     // isolate valid entries 
     zarray_t* loc_arr = zarray_create(sizeof(loc_t*));
    
-    for(int i = 0; i < (im->height-1); i++) {
+    for(int i = 0; i < im->height; i++) {
         if(n->sides[i].leftmost.x == im->width) continue;        // not apart of blob
 
 
@@ -153,8 +153,7 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
         loc->valid = 0;
         zarray_add(loc_arr, &loc);
     }
-
-    for(int i = 0; i < (im->height-1); i++) {
+    for(int i = 0; i < im->height; i++) {
         if(n->sides[i].rightmost.x == -1) continue;
 
         loc_t* loc = malloc(sizeof(loc_t));
@@ -164,26 +163,29 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
         zarray_add(loc_arr, &loc);
     }
 
-    // printf("\n\nall\n");
-    // for(int i = 0; i < zarray_size(loc_arr); i++)
-    // {
-    //     loc_t* p1;
-    //     zarray_get(loc_arr, i, &p1);
-    //     printf("(%d, %d)\n", p1->x, p1->y);
-    // }
-    // printf("\n\n");
-
+    printf("\n\nall\n");
+    for(int i = 0; i < zarray_size(loc_arr); i++)
+    {
+        loc_t* p1;
+        zarray_get(loc_arr, i, &p1);
+        printf("(%d, %d)\n", p1->x, p1->y);
+    }
+    printf("\n\n");
+    int iterations = 0;
     int best_score = 0;
     int lines_found = 0;
     loc_t line_match[8];
-    while(lines_found < 2)      // still a lot of points left 
+    while(lines_found < 4)      // still a lot of points left 
     {  
+        if(iterations > 1000000) break;
         // reset image and array
         vx_object_t *vim = vxo_image_from_u32(im, 0, 0);
         vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
         add_arr_of_locs_to_buffer(loc_arr, buf, 1.0, vx_black, met);
 
-        while(best_score < ((zarray_size(loc_arr)-1)/(4 - lines_found)))
+        int num_outliers = met.num_outliers/met.consensus_accuracy;
+
+        while(best_score < ((zarray_size(loc_arr) - num_outliers)/(4 - lines_found)))
         {
             reset_locs(loc_arr);
             // pick random sample (2 points)
@@ -200,38 +202,42 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
             for(int j = 0; j < zarray_size(loc_arr); j++) {
                 loc_t* tmp;
                 zarray_get(loc_arr, j, &tmp);
-                if(fabs(dist_from_point_to_line(p1, p2, tmp)) < met.std_dev_from_square) 
+                if(fabs(dist_from_point_to_line(p1, p2, tmp)) < (double)met.consensus_accuracy) 
                 {
                     tmp->valid = 1;
-                    // printf("dist: %lf\n", fabs(dist_from_point_to_line(p1, p2, tmp)));
+                    // printf("dist: (%d, %d, %d)  %lf\n", tmp->x, tmp->y, tmp->valid,
+                    //         fabs(dist_from_point_to_line(p1, p2, tmp)));
                     tmp_score++;
                 }
             }
             // keep best line so far 
             if(tmp_score > best_score) {
                 best_score = tmp_score;
-                printf("      score:%d,  %d,  %d\n", best_score, zarray_size(loc_arr), 
-                                                    (zarray_size(loc_arr)-1)/4);
+                printf("      score:%d,  %d,  %d  %lf\n", best_score, ((zarray_size(loc_arr)-1)/(4-lines_found)), 
+                                                    zarray_size(loc_arr), 10/met.std_dev_from_square);
                 line_match[lines_found*2] = *p1;
                 line_match[lines_found*2+1] = *p2;
             }
+            iterations++;
+            if(iterations > 1000000) break;
         }
         add_line_to_buffer(im, buf, 2.0, line_match[lines_found*2], line_match[lines_found*2+1], vx_yellow);
         // delete all points associated with the found line
         for(int i = 0; i < zarray_size(loc_arr); i++) {
             loc_t* tmp;
             zarray_get(loc_arr, i, &tmp);
-
+            // printf("removed: (%d, %d, %d) \n", tmp->x, tmp->y, tmp->valid);
             if(tmp->valid) 
             {
                 add_circle_to_buffer(buf,  1.0, *tmp, vx_red);
                 zarray_remove_index(loc_arr, i, 0);
+                i--;
             }
         }
         lines_found++;
         best_score = 0;
         vx_buffer_swap(buf);
-        usleep(5000000);
+        usleep(500000);
 
     }
 
@@ -245,7 +251,7 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
     //                                     line_match[1].x, line_match[1].y, 
     //                                     (double)best_score/N);
 
-    return(line_match);
+    return(NULL);
 
 }
 

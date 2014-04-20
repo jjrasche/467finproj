@@ -21,6 +21,10 @@ Solution:   I allocated a zarray of the wrong size (ball_pos_t) and was filling
             I found this out by seeing that my state variable location was being
             overwritten
 
+Symptom:    zarray_remove was not remooving all it was supposed to
+Problem:    was shifting all elements in array down when deleted, so was 
+            moving past every other element in array
+
 */
 
 #include "custom_util.h" 
@@ -67,6 +71,8 @@ struct state
     int blob_detect;
     int qualify;
     double square_variation;
+    double consensus_accuracy;
+    int num_outliers;
 
     loc_t clicked_loc;
     zarray_t* image_array;
@@ -179,8 +185,11 @@ void my_param_changed(parameter_listener_t *pl, parameter_gui_t *pg, const char 
     if (!strcmp("blur_amount", name)) {
         state->blur_amount = pg_gi(pg,name);
     }
-    if (!strcmp("zoom", name)) {
-        state->zoom = pg_gi(pg,name);
+    if (!strcmp("consensus_accuracy", name)) {
+        state->consensus_accuracy = pg_gd(pg,name);
+    }    
+    if (!strcmp("num_outliers", name)) {
+        state->num_outliers = pg_gi(pg,name);
     }    
     if (!strcmp("connection_method", name)) {
         state->connection_method = pg_gi(pg,name);
@@ -309,6 +318,8 @@ void* render_loop(void *data)
                     blob_detect = state->blob_detect;
                     double var = state->square_variation;
                     int qualify = state->qualify;
+                    int num_outliers = state->num_outliers;
+                    double conacc = state->consensus_accuracy;
                     pthread_mutex_unlock(&mutex);
 
                     image_u32_t* flipped = image_u32_create(im->width, im->height);
@@ -335,7 +346,9 @@ void* render_loop(void *data)
                                         .qualify = qualify,
                                         .lines = 0,
                                         .add_lines = add_lines,
-                                        .dothis = dilate_im
+                                        .dothis = dilate_im,
+                                        .num_outliers = num_outliers,
+                                        .consensus_accuracy = conacc
                                     };
                     // find and add to buffer all blobs that match a certain color
                     if(blob_detect) {
@@ -605,15 +618,18 @@ int main(int argc, char **argv)
 
     state->hsv_calib_num = 0;
     state->hsv_calibrations = calibs;
-    state->square_variation = 5;
-
-    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
-    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 360, state->hsv_calibrations[TARGETCOLOR].error.hue);
-    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.sat);
-    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
-    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
-    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
-    pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 50, state->square_variation);
+    state->square_variation = 2;
+    state->consensus_accuracy = 2.0;
+    state->num_outliers = 10;
+    // pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
+    // pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 360, state->hsv_calibrations[TARGETCOLOR].error.hue);
+    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.sat);
+    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
+    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
+    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
+    // pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 50, state->square_variation);
+    pg_add_int_slider(pg, "num_outliers", "Outliers", 0, 50, state->num_outliers);
+    pg_add_double_slider(pg, "consensus_accuracy", "ConAcc", 0, 50, state->consensus_accuracy);
 
    // pg_add_int_slider(pg, "zoom", "Zoom", 1, 20, state->zoom); 
 
