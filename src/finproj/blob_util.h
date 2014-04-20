@@ -13,5 +13,7 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame,
 
 void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met);
 
+loc_t get_line_intersection(loc_t l1p1, loc_t l1p2, loc_t l2p1, loc_t l2p2);
+
 
 #endif

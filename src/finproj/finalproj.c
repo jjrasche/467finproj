@@ -470,8 +470,8 @@ void* render_loop(void *data)
 
 void add_images(zarray_t* arr)
 {
-    add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic1.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic0.pnm", 640, 480, 2);
+    add_image(arr, "/home/jjrasche/finalProject/src/finproj/pic1.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_4m.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_6m.pnm", 640, 480, 2);
     add_image(arr, "/home/jjrasche/finalProject/src/finproj/face_10m.pnm", 640, 480, 2);
@@ -584,9 +584,9 @@ int main(int argc, char **argv)
     calibs[TARGETCOLOR].hsv.hue = 65;
     calibs[TARGETCOLOR].hsv.sat = .81;
     calibs[TARGETCOLOR].hsv.val = .68;
-    calibs[TARGETCOLOR].error.hue = 8;
-    calibs[TARGETCOLOR].error.sat = .4;
-    calibs[TARGETCOLOR].error.val = .35;
+    calibs[TARGETCOLOR].error.hue = 40;
+    calibs[TARGETCOLOR].error.sat = .5;
+    calibs[TARGETCOLOR].error.val = .4;
 
     // calibs[TARGETCOLOR].hsv.hue = 65;
     // calibs[TARGETCOLOR].hsv.sat = .6;
@@ -621,12 +621,12 @@ int main(int argc, char **argv)
     state->square_variation = 2;
     state->consensus_accuracy = 2.0;
     state->num_outliers = 10;
-    // pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
-    // pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 360, state->hsv_calibrations[TARGETCOLOR].error.hue);
-    // pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.sat);
-    // pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
-    // pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
-    // pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
+    pg_add_double_slider(pg, "target_h", "Hue", 0.00, 360, state->hsv_calibrations[TARGETCOLOR].hsv.hue);
+    pg_add_double_slider(pg, "target_h_err", "Hue Error", 0, 360, state->hsv_calibrations[TARGETCOLOR].error.hue);
+    pg_add_double_slider(pg, "target_s", "Saturation", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.sat);
+    pg_add_double_slider(pg, "target_s_err", "Saturation Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.sat);
+    pg_add_double_slider(pg, "target_v", "Value", 0.00, 1.00, state->hsv_calibrations[TARGETCOLOR].hsv.val);
+    pg_add_double_slider(pg, "target_v_err", "Value Error", 0, 1, state->hsv_calibrations[TARGETCOLOR].error.val);
     // pg_add_double_slider(pg, "square_variation", "Sq Var", 0, 50, state->square_variation);
     pg_add_int_slider(pg, "num_outliers", "Outliers", 0, 50, state->num_outliers);
     pg_add_double_slider(pg, "consensus_accuracy", "ConAcc", 0, 50, state->consensus_accuracy);
@@ -719,7 +719,18 @@ int main(int argc, char **argv)
 
 
 
-
+    // // line intersection tester
+    // loc_t l1p1 = {0,0};
+    // loc_t l1p2 = {0 , 5};
+    // loc_t l2p1 = {20, 0};
+    // loc_t l2p2 = {0 , 20}; 
+    // loc_t ans = get_line_intersection(l1p1, l1p2, l2p1, l2p2);
+    // printf("int = (%d, %d)\n", ans.x, ans.y);
+    // loc_t l3p1 = {5,0};
+    // loc_t l3p2 = {5 , 10};  
+    // ans = get_line_intersection(l1p1, l1p2, l3p1, l3p2);
+    // printf("int = (%d, %d)\n", ans.x, ans.y);
+    // return(0);
 
 
 

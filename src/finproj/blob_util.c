@@ -137,8 +137,124 @@ void reset_locs(zarray_t* locs)
     }
 }
 
-loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
+loc_t get_line_intersection(loc_t l1p1, loc_t l1p2, loc_t l2p1, loc_t l2p2)
 {
+    int A1 = l1p2.y - l1p1.y;
+    int B1 = l1p1.x - l1p2.x;
+    int C1 = (A1*l1p1.x) + (B1*l1p1.y);
+
+    int A2 = l2p2.y - l2p1.y;
+    int B2 = l2p1.x - l2p2.x;
+    int C2 = (A2*l2p1.x) + (B2*l2p1.y);
+
+    int det = A1*B2 - A2*B1;
+    loc_t ret = {-1,-1};
+    if(det != 0) {
+        ret.x = (B2*C1 - B1*C2)/det;
+        ret.y = (A1*C2 - A2*C1)/det;
+    }
+    return(ret);
+}
+
+void extend_lines_to_edge_of_image(image_u32_t* im, loc_t p1, loc_t p2, loc_t* out)
+{
+    loc_t boundary[8] = {  {1,1}, {1, 10},                               // left-side
+                           {1,1}, {10, 1},                               // bottom-side
+                           {(im->width-1), 1}, {(im->width-1), 10},      // right-side
+                           {1, (im->height-1)}, {10, (im->height-1)}};   // top-side
+    int num_point = 0;
+    // search over all 4 sides of box for intersection that is within boundary 
+    for(int i = 0; i < 4; i++) {    
+        loc_t intersect = get_line_intersection(p1, p2, boundary[i*2], boundary[i*2+1]);
+        if(in_range(im, intersect.x, intersect.y)) {
+            out[num_point++] = intersect;
+        }
+    }
+}
+
+int loc_already_in(loc_t* corners, loc_t loc, int num_corners)
+{
+    for(int i = 0; i < num_corners; i++) {
+        if(corners[i].x == loc.x && corners[i].y == loc.y)
+            return(1);
+    }
+    return(0);
+}
+
+void find_corners_from_lines(image_u32_t* im, loc_t* lines, int num_lines, 
+                                int* num_corners, loc_t* corners)
+{
+    // find intersection of each line with the other lines,
+    // if intersection is unique, add to the corners
+    for(int i = 0; i < num_lines; i++) {
+        for(int j = 0; j < num_lines; j++) {
+            if(i != j) {
+                loc_t intersect = get_line_intersection(lines[i*2], lines[i*2+1], 
+                                                        lines[j*2], lines[j*2+1]);
+                // printf("(%d, %d)  (%d, %d)   X   (%d, %d)  (%d, %d)  = (%d, %d)\n", 
+                //         lines[i*2].x, lines[i*2].y, lines[i*2+1].x, lines[i*2+1].y,
+                //         lines[j*2].x, lines[j*2].y, lines[j*2+1].x, lines[j*2+1].y,
+                //         intersect.x, intersect.y);
+                // intersect inside image
+                if(!in_range(im, intersect.x, intersect.y)) continue;
+                // not already a corner
+                if(loc_already_in(corners, intersect, *num_corners)) continue; 
+                // printf("        good\n");
+                corners[*num_corners] = intersect;
+                (*num_corners)++;
+            }
+        }
+    }
+    printf("num_corners: %d\n", *num_corners);
+}
+
+line_t find_line_endpoints(zarray_t* loc_arr, loc_t* p1, loc_t* p2)
+{
+    double largest_dist = INT_MIN;
+    loc_t largest_loc = {-1, -1};
+    double smallest_dist = INT_MAX;
+    loc_t smallest_loc = {-1, -1};
+
+    double slope = get_slope(*p1, *p2, 0, 0,  NULL);
+    // find point on line to compare every node to, simple solution = set x = im->width/2
+    loc_t* Q = p1;
+    // get line unit vector,  y=mx+b  --> vector = (1,m)
+    double mag = sqrt(1 + slope*slope);
+    vec_t u = {1/mag, slope/mag};
+    // assert(sqrt((u.x*u.x) + (u.y*u.y)) == 1);       // length of u should be 1
+    // printf("\nunit vec:(%lf(%lf), %lf)  Point(%d, %d)\n", u.x, 1/mag, u.y, Q.x, Q.y);
+    for(int i = 0; i < zarray_size(loc_arr); i++)
+    {   
+        loc_t* tmp;
+        zarray_get(loc_arr, i, &tmp);
+
+        // find the projection of point onto line
+        vec_t QP = {Q->x - tmp->x, Q->y - tmp->y};
+        double dist = u.x * QP.x  +  u.y * QP.y; 
+
+        // printf("dist:%lf  small:%lf  larg:%lf   QP:(%lf, %lf)  loc:(%d, %d) \n", 
+        //        dist, smallest_dist, largest_dist, QP.x, QP.y, node->loc.x, node->loc.y);
+        if(dist < smallest_dist) {
+            smallest_dist = dist;
+            smallest_loc.x = tmp->x;
+            smallest_loc.y = tmp->y;
+        }
+        if(dist > largest_dist) {
+            largest_dist = dist;
+            largest_loc.x = tmp->x;
+            largest_loc.y = tmp->y;
+        }
+    }
+
+    line_t ret = {  .end = largest_loc,
+                    .start = smallest_loc,
+                    .nodes = NULL };
+    return(ret);
+}
+
+loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met, loc_t* out)
+{
+    // usleep(2000000);
     srand(time(NULL));
     // isolate valid entries 
     zarray_t* loc_arr = zarray_create(sizeof(loc_t*));
@@ -163,24 +279,25 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
         zarray_add(loc_arr, &loc);
     }
 
-    printf("\n\nall\n");
-    for(int i = 0; i < zarray_size(loc_arr); i++)
-    {
-        loc_t* p1;
-        zarray_get(loc_arr, i, &p1);
-        printf("(%d, %d)\n", p1->x, p1->y);
-    }
-    printf("\n\n");
+    // printf("\n\nall\n");
+    // for(int i = 0; i < zarray_size(loc_arr); i++)
+    // {
+    //     loc_t* p1;
+    //     zarray_get(loc_arr, i, &p1);
+    //     printf("(%d, %d)\n", p1->x, p1->y);
+    // }
+    // printf("\n\n");
     int iterations = 0;
     int best_score = 0;
     int lines_found = 0;
     loc_t line_match[8];
-    while(lines_found < 4)      // still a lot of points left 
+    int max_iterations = 500;
+    while(lines_found < 2  && zarray_size(loc_arr) > met.num_outliers)      // still a lot of points left 
     {  
-        if(iterations > 1000000) break;
+        if(iterations > max_iterations) break;
         // reset image and array
-        vx_object_t *vim = vxo_image_from_u32(im, 0, 0);
-        vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
+        // vx_object_t *vim = vxo_image_from_u32(im, 0, 0);
+        // vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, vim));
         add_arr_of_locs_to_buffer(loc_arr, buf, 1.0, vx_black, met);
 
         int num_outliers = met.num_outliers/met.consensus_accuracy;
@@ -204,6 +321,7 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
                 zarray_get(loc_arr, j, &tmp);
                 if(fabs(dist_from_point_to_line(p1, p2, tmp)) < (double)met.consensus_accuracy) 
                 {
+
                     tmp->valid = 1;
                     // printf("dist: (%d, %d, %d)  %lf\n", tmp->x, tmp->y, tmp->valid,
                     //         fabs(dist_from_point_to_line(p1, p2, tmp)));
@@ -212,46 +330,75 @@ loc_t* fit_lines(image_u32_t* im, node_t* n, vx_buffer_t* buf, metrics_t met)
             }
             // keep best line so far 
             if(tmp_score > best_score) {
+                if(lines_found != 0) {      // if 2nd line intersects, throw it out and find another 
+                    loc_t intersect = get_line_intersection(line_match[0], line_match[1], *p1, *p2);
+                        if(in_range(im, intersect.x, intersect.y)) continue;
+                }
                 best_score = tmp_score;
-                printf("      score:%d,  %d,  %d  %lf\n", best_score, ((zarray_size(loc_arr)-1)/(4-lines_found)), 
-                                                    zarray_size(loc_arr), 10/met.std_dev_from_square);
+                // printf("      score:%d,  %d,  %d  %lf\n", best_score, ((zarray_size(loc_arr)-1)/(4-lines_found)), 
+                //                                     zarray_size(loc_arr), 10/met.std_dev_from_square);
                 line_match[lines_found*2] = *p1;
                 line_match[lines_found*2+1] = *p2;
             }
             iterations++;
-            if(iterations > 1000000) break;
+            if(iterations > max_iterations) break;
         }
-        add_line_to_buffer(im, buf, 2.0, line_match[lines_found*2], line_match[lines_found*2+1], vx_yellow);
+        // loc_t ext_lines[2];
+        // extend_lines_to_edge_of_image(im, line_match[lines_found*2], line_match[lines_found*2+1], ext_lines);
+        // add_line_to_buffer(im, buf, 2.0, ext_lines[0], ext_lines[1], vx_yellow);
         // delete all points associated with the found line
+        zarray_t* endpoints_arr = zarray_create(sizeof(loc_t*));
         for(int i = 0; i < zarray_size(loc_arr); i++) {
             loc_t* tmp;
             zarray_get(loc_arr, i, &tmp);
             // printf("removed: (%d, %d, %d) \n", tmp->x, tmp->y, tmp->valid);
             if(tmp->valid) 
             {
-                add_circle_to_buffer(buf,  1.0, *tmp, vx_red);
+                // add_circle_to_buffer(buf,  1.0, *tmp, vx_red);
+                zarray_add(endpoints_arr, &tmp);
                 zarray_remove_index(loc_arr, i, 0);
                 i--;
             }
         }
+        // find endpoints of line 
+        loc_t ext_lines[2];
+        extend_lines_to_edge_of_image(im, line_match[lines_found*2], line_match[lines_found*2+1], ext_lines);
+        line_t endpoints = find_line_endpoints(endpoints_arr, &ext_lines[0], &ext_lines[1]);
+        add_circle_to_buffer(buf,  2.0, endpoints.start, vx_red);
+        add_circle_to_buffer(buf,  2.0, endpoints.end, vx_red);
+        line_match[lines_found*2] = endpoints.start;
+        line_match[lines_found*2+1] = endpoints.end;
+
         lines_found++;
         best_score = 0;
-        vx_buffer_swap(buf);
-        usleep(500000);
-
+        // vx_buffer_swap(buf);
+        // usleep(500000);
     }
 
-    zarray_destroy(loc_arr);
+    loc_t* ret = calloc(lines_found*2, sizeof(loc_t));
     for(int i = 0; i < lines_found; i++) {
-        add_line_to_buffer(im, buf, 2.0, line_match[i*2], line_match[i*2+1], vx_yellow);
+        ret[i*2] = line_match[i*2];
+        ret[i*2+1] = line_match[i*2+1]; 
+        loc_t ext_lines[2];
+        extend_lines_to_edge_of_image(im, line_match[i*2], line_match[i*2+1], ext_lines);
+        add_line_to_buffer(im, buf, 2.0, ext_lines[0], ext_lines[1], vx_blue);
     }
 
+    zarray_vmap(loc_arr, free);
+    zarray_destroy(loc_arr);
+    return(ret);
+
+    // int corners_found = 0;
+    // loc_t corners[4];
+    // find_corners_from_lines(im,line_match, 4, &corners_found, corners);
+    // for(int i = 0; i < corners_found; i++) {
+    //     printf("(%d, %d)\n", corners[i].x, corners[i].y);
+    //     add_circle_to_buffer(buf, 3.0, corners[i], vx_blue);
+    // }
 
     // printf("(%d, %d) (%d, %d)   %lf\n", line_match[0].x, line_match[0].y, 
     //                                     line_match[1].x, line_match[1].y, 
     //                                     (double)best_score/N);
-
-    return(NULL);
 
 }
 
@@ -854,48 +1001,62 @@ matd_t* build_homography(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
 
         if(buf != NULL) {
             add_circle_to_buffer(buf, size, center, vx_maroon);
-            add_circle_to_buffer(buf, size, parent, vx_olive);
+            // add_circle_to_buffer(buf, size, parent, vx_olive);
 
             // add_sides_to_buffer(im, buf, 1.0, &n, vx_orange, met);
-            loc_t* line = fit_lines(im, &n, buf, met);
+            loc_t* lp = fit_lines(im, &n, buf, met, NULL);
+            if(lp != NULL) {
+                // printf("(%d, %d) (%d, %d) (%d, %d) (%d, %d) \n",
+                //         lp[0].x, lp[0].y, lp[1].x, lp[1].y, lp[2].x, lp[2].y, lp[3].x, lp[3].y);
+                loc_t intersect = get_line_intersection(lp[0], lp[1], lp[2], lp[3]);
+                if(in_range(im, intersect.x, intersect.y)) {
+                    loc_t ext_lines[2];
+                    extend_lines_to_edge_of_image(im, intersect, center, ext_lines);
+                    add_line_to_buffer(im, buf, 2.0, ext_lines[0], ext_lines[1], vx_blue);                
+                }
+                for(int i = 0; i < 4; i++) {
+                    pix_array[i*2] = lp[i].x;
+                    pix_array[i*2+1] = lp[i].y;
+                    add_circle_to_buffer(buf, 3.0, lp[i], vx_orange);
+                }
+            }
+
+
 
             free(n.sides);
 
-            loc_t corners[4] = {{n.box.right, n.box.top},
-                                {n.box.right, n.box.bottom},
-                                {n.box.left, n.box.bottom},
-                                {n.box.left, n.box.top}};
+            // loc_t corners[4] = {{n.box.right, n.box.top},
+            //                     {n.box.right, n.box.bottom},
+            //                     {n.box.left, n.box.bottom},
+            //                     {n.box.left, n.box.top}};
             // print extremes of box
-            if(1) {
-                add_circle_to_buffer(buf, size, corners[0], vx_green);
-                add_circle_to_buffer(buf, size, corners[1], vx_yellow);
-                add_circle_to_buffer(buf, size, corners[2], vx_red);
-                add_circle_to_buffer(buf, size, corners[3], vx_blue);
-                for(int j = 0; j < 4; j++) {
-                    // add_circle_to_buffer(buf, size, corners[j], vx_maroon);
-                }
-            }
+            // if(1) {
+            //     add_circle_to_buffer(buf, size, corners[0], vx_green);
+            //     add_circle_to_buffer(buf, size, corners[1], vx_yellow);
+            //     add_circle_to_buffer(buf, size, corners[2], vx_red);
+            //     add_circle_to_buffer(buf, size, corners[3], vx_blue);
+            //     for(int j = 0; j < 4; j++) {
+            //         // add_circle_to_buffer(buf, size, corners[j], vx_maroon);
+            //     }
+            // }
         }
-        // size += .1;
-        // pix_array[idx*2] = pos.x;
-        // pix_array[idx*2+1] = pos.y;
-        idx++;
     }
 
-    return(NULL);
     matd_t* H;
-    if(0) {//zarray_size(blobs) == NUM_CHART_BLOBS){
-        H = dist_homography(pix_array, NUM_CHART_BLOBS);
-    }
-    else if(zarray_size(blobs) == NUM_TARGETS){
-        H = dist_homography(pix_array, NUM_TARGETS);
-        if(met.add_lines) connect_lines(blobs, buf);
-    }
-    else {
-        if(met.dothis)
-            printf("num figures: %d\n", zarray_size(blobs));
-        return(NULL);
-    }
+    H = dist_homography(pix_array, NUM_TARGETS);
+
+    // if(0) {//zarray_size(blobs) == NUM_CHART_BLOBS){
+    //     H = dist_homography(pix_array, NUM_CHART_BLOBS);
+    // }
+    // else if(zarray_size(blobs) == NUM_TARGETS){
+    //     H = dist_homography(pix_array, NUM_TARGETS);
+    //     if(met.add_lines) connect_lines(blobs, buf);
+    // }
+    // else {
+    //     if(met.dothis)
+    //         printf("num figures: %d\n", zarray_size(blobs));
+    //     return(NULL);
+    // }
 
     // make projected points
     // project_measurements_through_homography(H, buf, blobs, zarray_size(blobs));
@@ -946,8 +1107,8 @@ void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
     // matd_print(H, matrix_format);
     // printf("\n\n");
     // printf("model:\n");
-    // matd_print(Model, "%15f");
-    // printf("\n\n");
+    matd_print(Model, "%15f");
+    printf("\n\n");
     // matd_print(matd_op("M^-1",Model), matrix_format);
     // printf("\n");
     // extrapolate metrics from model view
@@ -972,12 +1133,11 @@ void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
 
 
 
-    // char str[200];
-    // sprintf(str, "<<#00ffff,serif-30>> DIST:%lf  Offset:(%lf, %lf)\n rot: (%lf, %lf, %lf)\n", 
-    //             TZ, TX, TY, rot_x, rot_y, rot_z);
-    // vx_object_t *text = vxo_text_create(VXO_TEXT_ANCHOR_BOTTOM_LEFT, str); 
-    // vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, text));
-    // vxo_text_create(VXO_TEXT_ANCHOR_CENTER,
-    //                                           "<<right,#aa00ff,monospaced>>Example Text"));
+    char str[200];
+    sprintf(str, "<<#00ffff,serif-30>> DIST:%lf  Offset:(%lf, %lf)\n rot: (%lf, %lf, %lf)\n", 
+                TZ, TX, TY, rot_x, rot_y, rot_z);
+    vx_object_t *text = vxo_text_create(VXO_TEXT_ANCHOR_BOTTOM_LEFT, str); 
+    vx_buffer_add_back(buf, vxo_pix_coords(VX_ORIGIN_BOTTOM_LEFT, text));
+
     // printf("dist: %lf   cos:%lf  angle: %lf\n", TZ, cosine, theta);
 }
