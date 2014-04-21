@@ -869,12 +869,12 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
             is_extreme(&node->parent_node->box, node->id%im->stride, node->id/im->stride);
 
             check_row_side(im, node);
-
-
             // key should exist, if it doesn't find out why
             assert(zhash_remove(node_map, &node->id, NULL, NULL));
+            free(node);
         }
     }
+    zarray_destroy(vals);
 
     // search parent only hash and add to blobs out conditionally
     vals = zhash_values(node_map);
@@ -889,6 +889,7 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
             zarray_add(blobs_out, node);
             // printf("parent %d\n", node->id);
         }
+        else free(node);
     }
     zarray_destroy(vals);
     zhash_vmap_values(node_map, free);
