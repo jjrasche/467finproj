@@ -497,6 +497,7 @@ void add_sides_to_buffer(image_u32_t* im, vx_buffer_t* buf, double size,
 
 
 node_t* resolve_r(node_t* n) {
+    // printf("%d\n", n->id);
     if(n->parent_id == n->id) return n;
 
     n->parent_node = resolve_r(n->parent_node);
@@ -790,15 +791,16 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
 
 
     // Int to node
-    zhash_t* node_map = zhash_create(sizeof(uint32_t), sizeof(node_t*),
-            zhash_uint32_hash, zhash_uint32_equals);
+    // zhash_t* node_map = zhash_create(sizeof(uint32_t), sizeof(node_t*),
+    //         zhash_uint32_hash, zhash_uint32_equals);
+    node_t** node_map = calloc(im->width*im->height, sizeof(node_t*));
 
     for(int i = frame.xy0.y; i < frame.xy1.y; i++) {
         for(int j = frame.xy0.x; j < frame.xy1.x; j++) {
             if((i < frame.ex0.y || i > frame.ex1.y) || (j < frame.ex0.x || j > frame.ex1.x)) {
 
                 uint32_t idx_im = i * im->stride + j; // Indframe.ex relative to image
-
+                node_map[idx_im] = NULL;
                 // 'Acceptable'
                  if(hsv_error_check(im->buf[idx_im], met, TARGETCOLOR))
                  {
@@ -814,14 +816,10 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
                     n->box = tmp;
                     n->sides = NULL;
 
+                    node_map[idx_im] = n;
+
                     node_t* tmp_node;
                     uint32_t tmp_idx;
-
-                    // Add node to node map
-                    if(zhash_put(node_map, &idx_im, &n, &tmp_idx, &tmp_node)==1) 
-                    {
-                        assert(0);
-                    }
 
                     //Check if apart of another blob, or starting a new blob 
                     // if apart of another, point to the parent, if a new blob, point to self 
@@ -829,17 +827,15 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
                     if(!met.lines) {    // only check this if don't want lines for tape detection
                         if(j > frame.xy0.x) {
                             tmp_idx = idx_im - 1; // is Left neighbour similar color 
-                            if(zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
-                                node_t* neighbour = tmp_node;
-                                connect(n, neighbour);                    
+                            if(node_map[tmp_idx] != NULL) {
+                                connect(n, node_map[tmp_idx]);                    
                             }
                         }
                     }
                     if(i > frame.xy0.y) { 
                         tmp_idx = idx_im - im->stride; // is Bottom neighbor similar color
-                        if(tmp_idx > 0 && zhash_get(node_map, &tmp_idx, &tmp_node) == 1) {
-                            node_t* neighbour = tmp_node;
-                            connect(neighbour,n);                    
+                        if(node_map[tmp_idx] != NULL) {
+                            connect(node_map[tmp_idx],n);                    
                         }
                     }
                 }
@@ -856,10 +852,11 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
     3) ensure that the blob is a square 
     */
 
-    zarray_t* vals = zhash_values(node_map);
-    for(int i = 0; i < zarray_size(vals); i++) {
-        node_t* node;
-        zarray_get(vals, i, &node);
+    // zarray_t* vals = zhash_values(node_map);
+    for(int i = 0; i < ((im->height-1)*(im->width-1)); i++) {
+        node_t* node = node_map[i];
+        // zarray_get(vals, i, &node);
+        if(node == NULL) continue;
         resolve_r(node);
 
         if(node->parent_id != node->id) {
@@ -867,20 +864,22 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
             node->parent_node->ave_loc.x += node->id%im->stride;
             node->parent_node->ave_loc.y += node->id/im->stride;
             is_extreme(&node->parent_node->box, node->id%im->stride, node->id/im->stride);
-
             check_row_side(im, node);
             // key should exist, if it doesn't find out why
-            assert(zhash_remove(node_map, &node->id, NULL, NULL));
-            free(node);
+            // assert(zhash_remove(node_map, &node->id, NULL, NULL));
+            // free(node);
         }
     }
-    zarray_destroy(vals);
+
+    // zarray_destroy(vals);
 
     // search parent only hash and add to blobs out conditionally
-    vals = zhash_values(node_map);
-    for(int i = 0; i < zarray_size(vals); i++) {
-        node_t* node;
-        zarray_get(vals, i, &node);
+    // vals = zhash_values(node_map);
+    for(int i = 0; i < ((im->height-1)*(im->width-1)); i++) {
+        node_t* node = node_map[i];
+        // zarray_get(vals, i, &node);
+        if(node == NULL || node->parent_id != node->id) continue;
+
         if(node->num_children > met.min_size) {
 
             // loc_t pos;
@@ -889,11 +888,22 @@ void hsv_find_balls_blob_detector(image_u32_t* im, frame_t frame, metrics_t met,
             zarray_add(blobs_out, node);
             // printf("parent %d\n", node->id);
         }
-        else free(node);
+        else {
+            free(node->sides);
+            node = NULL;
+            free(node);
+        }
     }
-    zarray_destroy(vals);
-    zhash_vmap_values(node_map, free);
-    zhash_destroy(node_map);
+    for(int i = 0; i < ((im->height-1)*(im->width-1)); i++)
+    {
+        node_t* node = node_map[i];
+        if(node != NULL)
+            free(node);
+    }
+    free(node_map);
+    // zarray_destroy(vals);
+    // zhash_vmap_values(node_map, free);
+    // zhash_destroy(node_map);
 }
 
 // returns 1 if thinks this is a target blob 
@@ -1108,8 +1118,8 @@ void take_measurements(image_u32_t* im, vx_buffer_t* buf, metrics_t met)
     // matd_print(H, matrix_format);
     // printf("\n\n");
     // printf("model:\n");
-    matd_print(Model, "%15f");
-    printf("\n\n");
+    // matd_print(Model, "%15f");
+    // printf("\n\n");
     // matd_print(matd_op("M^-1",Model), matrix_format);
     // printf("\n");
     // extrapolate metrics from model view

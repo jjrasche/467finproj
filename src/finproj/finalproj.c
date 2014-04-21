@@ -581,12 +581,12 @@ int main(int argc, char **argv)
     // hsv calibration setting (0,1,2,3) --> target color, black background, grey background, green testing
     hsv_calib_t calibs[NUM_HSV_CALIBS];
 
-    calibs[TARGETCOLOR].hsv.hue = 65;
+    calibs[TARGETCOLOR].hsv.hue = 200;
     calibs[TARGETCOLOR].hsv.sat = .81;
     calibs[TARGETCOLOR].hsv.val = .68;
-    calibs[TARGETCOLOR].error.hue = 40;
-    calibs[TARGETCOLOR].error.sat = .5;
-    calibs[TARGETCOLOR].error.val = .4;
+    calibs[TARGETCOLOR].error.hue = 10;
+    calibs[TARGETCOLOR].error.sat = .3;
+    calibs[TARGETCOLOR].error.val = .2;
 
     // calibs[TARGETCOLOR].hsv.hue = 65;
     // calibs[TARGETCOLOR].hsv.sat = .6;
